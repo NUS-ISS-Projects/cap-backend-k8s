@@ -1,0 +1,379 @@
+
+===== File: base/kustomization.yaml =====
+
+resources:
+  - data-ingestion-service-deployment.yaml
+  - data-ingestion-service.yaml
+  - data-processing-service-deployment.yaml
+  - data-processing-service.yaml
+  - kafka-service.yaml
+  - kafka-statefulset.yaml
+  - postgres-deployment.yaml
+  - postgres-service.yaml
+  - zookeeper-service.yaml
+  - zookeeper-statefulset.yaml
+
+# resources:
+#   - ingress.yaml
+#   - storage-class.yaml
+#   - kafka-statefulset.yaml
+#   - kafka-service.yaml
+#   - zookeeper-statefulset.yaml
+#   - zookeeper-service.yaml
+#   - watchlist-deployment.yaml
+#   - watchlist-service.yaml
+#   - watchlist-hpa.yaml
+#   - notification-deployment.yaml
+#   - notification-service.yaml
+#   - notification-hpa.yaml
+#   - user-deployment.yaml
+#   - user-service.yaml
+#   - user-hpa.yaml
+#   - coin-deployment.yaml
+#   - coin-service.yaml
+#   - coin-hpa.yaml
+#   - redis-statefulset.yaml
+#   - redis-service.yaml
+  
+# secretGenerator:
+#   # GHCR Docker Registry secret
+#   - name: ghcr-secret
+#     files:
+#       - .dockerconfigjson  # File generated dynamically in the GitHub Actions workflow
+#     type: kubernetes.io/dockerconfigjson
+
+#   # Firebase config for notification-service
+#   - name: firebase-config-notification
+#     files:
+#       - google-services-notification.json
+
+#   # Firebase config for user-service
+#   - name: firebase-config-user
+#     files:
+#       - google-services-user.json
+
+#   # Firebase config for watchlist-service
+#   - name: firebase-config-watchlist
+#     files:
+#       - google-services-watchlist.json
+
+# generatorOptions:
+#   disableNameSuffixHash: true
+========================
+
+
+
+===== File: base/data-processing-service.yaml =====
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-processing-service
+spec:
+  type: ClusterIP
+  selector:
+    app: data-processing-service
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+========================
+
+
+
+===== File: base/kafka-service.yaml =====
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+spec:
+  ports:
+  - port: 9092
+    name: kafka
+  clusterIP: None
+  selector:
+    app: kafka
+========================
+
+
+
+===== File: base/data-processing-service-deployment.yaml =====
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-processing-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-processing-service
+  template:
+    metadata:
+      labels:
+        app: data-processing-service
+    spec:
+      containers:
+      - name: data-processing-service
+        image: data-processing-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /api/processing/health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/processing/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        env:
+          - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+            value: "kafka:9092"
+          - name: KAFKA_TOPIC
+            value: "dis-pdus"
+          - name: SPRING_KAFKA_CONSUMER_GROUP_ID
+            value: "processing-group"
+          - name: SPRING_DATASOURCE_URL
+            value: "jdbc:postgresql://postgres:5432/dis_db"
+          - name: SPRING_DATASOURCE_USERNAME
+            value: "dis_user"
+          - name: SPRING_DATASOURCE_PASSWORD
+            value: "dis_pass"
+
+
+========================
+
+
+
+===== File: base/data-ingestion-service-deployment.yaml =====
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-ingestion-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-ingestion-service
+  template:
+    metadata:
+      labels:
+        app: data-ingestion-service
+    spec:
+      containers:
+      - name: data-ingestion-service
+        image: data-ingestion-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080  # Spring Boot HTTP port
+        - containerPort: 3000  # UDP listener port
+          protocol: UDP
+        readinessProbe:
+          httpGet:
+            path: /api/ingestion/health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/ingestion/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        env:
+          - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+            value: "kafka:9092"
+          - name: KAFKA_TOPIC
+            value: "dis-pdus"
+          - name: UDP_PORT
+            value: "3000"
+          - name: UDP_BUFFER_SIZE
+            value: "2048"
+
+
+========================
+
+
+
+===== File: base/zookeeper-service.yaml =====
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: zookeeper
+spec:
+  ports:
+  - port: 2181
+    name: client
+  clusterIP: None
+  selector:
+    app: zookeeper
+========================
+
+
+
+===== File: base/postgres-deployment.yaml =====
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:14
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: "dis_db"
+        - name: POSTGRES_USER
+          value: "dis_user"
+        - name: POSTGRES_PASSWORD
+          value: "dis_pass"
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: postgres-storage
+        emptyDir: {}   # For local testing; for persistence use a PVC.
+
+
+========================
+
+
+
+===== File: base/postgres-service.yaml =====
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+========================
+
+
+
+===== File: base/zookeeper-statefulset.yaml =====
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: zookeeper
+spec:
+  serviceName: "zookeeper"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zookeeper
+  template:
+    metadata:
+      labels:
+        app: zookeeper
+    spec:
+      containers:
+      - name: zookeeper
+        image: zookeeper:3.7.1
+        ports:
+        - containerPort: 2181
+        env:
+        - name: ZOOKEEPER_CLIENT_PORT
+          value: "2181"
+
+
+========================
+
+
+
+===== File: base/data-ingestion-service.yaml =====
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-ingestion-service
+spec:
+  type: ClusterIP
+  selector:
+    app: data-ingestion-service
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - name: udp
+      protocol: UDP
+      port: 3000
+      targetPort: 3000
+
+========================
+
+
+
+===== File: base/kafka-statefulset.yaml =====
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+spec:
+  serviceName: "kafka"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+      - name: kafka
+        image: wurstmeister/kafka:2.12-2.2.1
+        ports:
+        - containerPort: 9092
+        env:
+        - name: KAFKA_BROKER_ID
+          value: "1"
+        - name: KAFKA_ZOOKEEPER_CONNECT
+          value: "zookeeper:2181"
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: "PLAINTEXT://kafka:9092"
+        - name: KAFKA_LISTENERS
+          value: "PLAINTEXT://0.0.0.0:9092"
+
+
+========================
+
+
+
+===== File: overlays/prod/kustomization.yaml =====
+
+resources:
+  - ../../base
+
+========================
+
+

@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-ingestion-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-ingestion-service
+  template:
+    metadata:
+      labels:
+        app: data-ingestion-service
+    spec:
+      containers:
+      - name: data-ingestion-service
+        image: data-ingestion-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080  # Spring Boot HTTP port
+        - containerPort: 3000  # UDP listener port
+          protocol: UDP
+        readinessProbe:
+          httpGet:
+            path: /api/ingestion/health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/ingestion/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        env:
+          - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+            value: "kafka:9092"
+          - name: KAFKA_TOPIC
+            value: "dis-pdus"
+          - name: UDP_PORT
+            value: "3000"
+          - name: UDP_BUFFER_SIZE
+            value: "2048"
+

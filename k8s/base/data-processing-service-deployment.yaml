@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-processing-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-processing-service
+  template:
+    metadata:
+      labels:
+        app: data-processing-service
+    spec:
+      containers:
+      - name: data-processing-service
+        image: data-processing-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /api/processing/health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/processing/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        env:
+          - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+            value: "kafka:9092"
+          - name: KAFKA_TOPIC
+            value: "dis-pdus"
+          - name: SPRING_KAFKA_CONSUMER_GROUP_ID
+            value: "processing-group"
+          - name: SPRING_DATASOURCE_URL
+            value: "jdbc:postgresql://postgres:5432/dis_db"
+          - name: SPRING_DATASOURCE_USERNAME
+            value: "dis_user"
+          - name: SPRING_DATASOURCE_PASSWORD
+            value: "dis_pass"
+
