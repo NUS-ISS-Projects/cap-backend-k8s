@@ -11,6 +11,16 @@ resources:
   - zookeeper-service.yaml
   - zookeeper-statefulset.yaml
 
+secretGenerator:
+  # GHCR Docker Registry secret
+  - name: ghcr-secret
+    files:
+      - .dockerconfigjson  # File generated dynamically in the GitHub Actions workflow
+    type: kubernetes.io/dockerconfigjson
+
+generatorOptions:
+  disableNameSuffixHash: true
+
 # resources:
 #   - ingress.yaml
 #   - storage-class.yaml
