@@ -4,6 +4,12 @@ metadata:
   name: data-ingestion-service
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  revisionHistoryLimit: 5  # Retain 5 revisions for rollback
   selector:
     matchLabels:
       app: data-ingestion-service
@@ -12,14 +18,23 @@ spec:
       labels:
         app: data-ingestion-service
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
       - name: data-ingestion-service
-        image: data-ingestion-service:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/nus-iss-projects/cap-backend-data-ingestion/cap-backend-data-ingestion:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080  # Spring Boot HTTP port
         - containerPort: 3000  # UDP listener port
           protocol: UDP
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
         readinessProbe:
           httpGet:
             path: /api/ingestion/health

@@ -1,0 +1,124 @@
+name: Deploy to GKE
+
+on:
+  push:
+    tags:
+      - '*-release'
+      - '*-staging'
+
+env:
+  PROJECT_ID: ${{ secrets.PROJECT_ID }}
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
+  GKE_ZONE: ${{ secrets.GKE_ZONE }}
+  GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+  GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+  GOOGLE_SERVICES_NOTIFICATION: ${{ secrets.GOOGLE_SERVICES_NOTIFICATION }}
+  GOOGLE_SERVICES_USER: ${{ secrets.GOOGLE_SERVICES_USER }}
+  GOOGLE_SERVICES_WATCHLIST: ${{ secrets.GOOGLE_SERVICES_WATCHLIST }}
+  GCLOUD_AUTH: ${{ secrets.GCLOUD_AUTH }}
+
+jobs:
+  deploy-to-gke:
+    name: Deploy to GKE
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Checkout code
+      - uses: actions/checkout@v2
+
+      # Step 2: Authenticate to GCP using GKE credentials
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ env.GCLOUD_AUTH }}'
+
+      # Step 3: Set up Cloud SDK
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Step 4: Install the GKE gcloud auth plugin
+      - name: Install gke-gcloud-auth-plugin
+        run: |
+          gcloud components install gke-gcloud-auth-plugin
+
+      # Step 5: Enable the GKE Auth Plugin for kubectl
+      - name: Configure GKE Auth Plugin
+        run: echo "export USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $GITHUB_ENV
+
+      # Step 6: Get GKE credentials
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --zone ${{ env.GKE_ZONE }} --project ${{ env.PROJECT_ID }}
+
+      # Step 7: Create the GHCR Docker config file for use with secretGenerator
+      - name: Create GHCR Docker config
+        run: |
+          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n "${{ env.GHCR_USERNAME }}:${{ env.GHCR_TOKEN }}" | base64)"'"}}}' > k8s/base/.dockerconfigjson
+
+      # Step 8: Decode and inject google-services.json for notification-service
+      - name: Decode google-services.json for notification-service
+        run: |
+          echo "${{ env.GOOGLE_SERVICES_NOTIFICATION }}" | base64 --decode > k8s/base/google-services-notification.json
+
+      # Step 9: Decode and inject google-services.json for user-service
+      - name: Decode google-services.json for user-service
+        run: |
+          echo "${{ env.GOOGLE_SERVICES_USER }}" | base64 --decode > k8s/base/google-services-user.json
+
+      # Step 10: Decode and inject google-services.json for watchlist-service
+      - name: Decode google-services.json for watchlist-service
+        run: |
+          echo "${{ env.GOOGLE_SERVICES_WATCHLIST }}" | base64 --decode > k8s/base/google-services-watchlist.json
+
+      # Step 11: Install Kustomize
+      - name: Install Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      # Step 12: Apply Kustomize for production
+      - name: Apply Kubernetes Manifests for production
+        if: contains(github.ref, '-release')
+        run: |
+          kustomize build ./k8s/overlays/prod | kubectl apply -f -
+
+      # Step 13: Apply Kustomize for staging
+      - name: Apply Kubernetes Manifests for staging
+        if: contains(github.ref, '-staging')
+        run: |
+          kustomize build ./k8s/overlays/staging | kubectl apply -f -
+
+      # Step 14: Check the deployment status for each service
+      - name: Check Rollout Status
+        run: |
+          services=("notification-service" "user-service" "watchlist-service" "coin-service")
+          failed_services=()
+
+          for service in "${services[@]}"; do
+            if ! kubectl rollout status deployment/$service --timeout=10m; then
+              failed_services+=($service)
+            fi
+          done
+
+          if [ ${#failed_services[@]} -ne 0 ]; then
+            echo "Deployment failed for the following services: ${failed_services[@]}"
+            exit 1
+          else
+            echo "All services deployed successfully!"
+          fi
+
+      # Step 15: Rollback deployment if any service fails
+      - name: Rollback Failed Services
+        if: failure()
+        run: |
+          for service in "${failed_services[@]}"; do
+            kubectl rollout undo deployment/$service
+            echo "Rolled back $service due to failed deployment"
+          done
+
+      # Step 16: Clean up
+      - name: Clean up
+        run: |
+          rm k8s/base/.dockerconfigjson
+          rm k8s/base/google-services-notification.json
+          rm k8s/base/google-services-user.json
+          rm k8s/base/google-services-watchlist.json

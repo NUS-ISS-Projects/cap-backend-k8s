@@ -47,3 +47,14 @@ kubectl get ingress -n $NAMESPACE
 gcloud compute addresses list
 
 echo "Setup complete!"
+
+# ghcr credential in drive
+.dockerconfigjson
+
+# inspect postgres db inside docker
+kubectl exec -it <postgres-pod-name> -- psql -U dis_user -d dis_db
+\dt
+\d entity_state_record;
+SELECT * FROM entity_state_record LIMIT 10;
+SELECT * FROM pg_stat_activity;
+\q

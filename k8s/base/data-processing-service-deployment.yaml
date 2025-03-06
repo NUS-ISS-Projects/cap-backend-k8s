@@ -4,6 +4,12 @@ metadata:
   name: data-processing-service
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  revisionHistoryLimit: 5  # Retain 5 revisions for rollback
   selector:
     matchLabels:
       app: data-processing-service
@@ -12,12 +18,21 @@ spec:
       labels:
         app: data-processing-service
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
       - name: data-processing-service
-        image: data-processing-service:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/nus-iss-projects/cap-backend-data-processing/cap-backend-data-processing:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
         readinessProbe:
           httpGet:
             path: /api/processing/health
