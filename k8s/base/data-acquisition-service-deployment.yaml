@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-acquisition-service
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  revisionHistoryLimit: 5  # Retain 5 revisions for rollback
+  selector:
+    matchLabels:
+      app: data-acquisition-service
+  template:
+    metadata:
+      labels:
+        app: data-acquisition-service
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+      - name: data-acquisition-service
+        image: ghcr.io/nus-iss-projects/cap-backend-data-acquisition/cap-backend-data-acquisition:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+        readinessProbe:
+          httpGet:
+            path: /api/acquisition/health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/acquisition/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        env:
+          - name: SPRING_DATASOURCE_URL
+            value: "jdbc:postgresql://postgres:5432/dis_db"
+          - name: SPRING_DATASOURCE_USERNAME
+            value: "dis_user"
+          - name: SPRING_DATASOURCE_PASSWORD
+            value: "dis_pass"
+
