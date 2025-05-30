@@ -3,6 +3,8 @@ import datetime
 import random
 import time
 
+# Run "kubectl port-forward svc/postgres 5432:5432" beforehand
+
 # --- Database Configuration ---
 DB_HOST = "localhost" 
 DB_PORT = "5432"
