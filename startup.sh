@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Variables
-PROJECT_ID="modified-badge-241302"
-CLUSTER_NAME="crypto-cluster"
+PROJECT_ID="third-hangout-460905-m7"
+CLUSTER_NAME="dis-cluster"
 ZONE="asia-southeast1"
 NAMESPACE="default"
-STATIC_IP_NAME="crypto-ingress-ip"  # If you want to use a static IP for Ingress, extra charges apply
+STATIC_IP_NAME="dis-ingress-ip"  # If you want to use a static IP for Ingress, extra charges apply
 K8S_MANIFEST_PATH="k8s/overlays/prod"
-SA_KEY_PATH="/path/to/your/service-account-key.json"
+SA_KEY_PATH="/home/ubuntu/cap_project/third-hangout-460905-m7-bd6e1a71c870.json"
 
 # Authenticate with GCP
 gcloud auth activate-service-account --key-file $SA_KEY_PATH
@@ -20,7 +20,7 @@ kubectl create secret docker-registry ghcr-secret \
   --docker-password=<your-personal-access-token> \
   --docker-email=<your-github-email>
 
-# Create GKE Cluster
+# Create GKE Cluster (Better use webapp)
 gcloud container clusters create-auto $CLUSTER_NAME \
     --region $ZONE \
     --enable-autopilot
@@ -29,7 +29,7 @@ gcloud container clusters create-auto $CLUSTER_NAME \
 gcloud container clusters get-credentials $CLUSTER_NAME --region $ZONE
 
 # Reserve a Static IP for Ingress
-# gcloud compute addresses create crypto-ingress-ip --global
+# gcloud compute addresses create dis-ingress-ip --global
 gcloud compute addresses create $STATIC_IP_NAME \
     --global
 

@@ -43,13 +43,13 @@ MINIKUBE_IP=$(minikube ip)
 echo "Minikube IP: $MINIKUBE_IP"
 
 # Modify /etc/hosts to prompt for password at the start
-if ! grep -q "crypto.local" /etc/hosts; then
-    echo "Adding crypto.local to /etc/hosts..."
-    echo "You will be prompted for your password to modify /etc/hosts and add the domain 'crypto.local'."
-    echo "$MINIKUBE_IP crypto.local" | sudo tee -a /etc/hosts > /dev/null
-    echo "Added crypto.local to /etc/hosts"
+if ! grep -q "dis.local" /etc/hosts; then
+    echo "Adding dis.local to /etc/hosts..."
+    echo "You will be prompted for your password to modify /etc/hosts and add the domain 'dis.local'."
+    echo "$MINIKUBE_IP dis.local" | sudo tee -a /etc/hosts > /dev/null
+    echo "Added dis.local to /etc/hosts"
 else
-    echo "crypto.local already exists in /etc/hosts"
+    echo "dis.local already exists in /etc/hosts"
 fi
 
 # Enable Minikube ingress addon
@@ -102,13 +102,13 @@ while true; do
 done
 
 # Test connection by pinging the domain
-echo "Pinging crypto.local to ensure connectivity..."
-if ! ping -c 4 crypto.local; then
-    echo "Failed to ping crypto.local. Please check your network settings."
+echo "Pinging dis.local to ensure connectivity..."
+if ! ping -c 4 dis.local; then
+    echo "Failed to ping dis.local. Please check your network settings."
     exit 1
 fi
 
 # Provide the user with the access URL
-echo "Your application should be accessible at http://crypto.local"
+echo "Your application should be accessible at http://dis.local"
 echo "To stop the application, run 'minikube stop' and 'minikube delete'"
 echo "To start the application again, run 'minikube start' and 'kubectl apply -k k8s/overlays/prod'"
