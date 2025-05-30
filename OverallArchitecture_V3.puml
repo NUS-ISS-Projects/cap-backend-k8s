@@ -43,7 +43,7 @@ Broker --> Processing : Stream data for processing
 Processing --> Storage : Write aggregated/clean data
 
 ' Data Acquisition for historical queries and metrics
-Storage --> DataAcquire : Expose historical data via optimized queries [cite: 588, 1725, 2277]
+Storage --> DataAcquire : Expose historical data via optimized queries
 ' MODIFIED LABEL AND DESCRIPTION for DataAcquire to Ingress
 DataAcquire --> Ingress : Provide REST endpoints for historical data & aggregated metrics 
 
@@ -54,7 +54,7 @@ MLService --> Ingress : Serve predictions/alerts\n(REST)
 
 ' Ingress and security flow
 Ingress --> AuthService : Enforce authentication & security
-UI --> Ingress : Consume historical data, metrics & predictions ' MODIFIED UI consumption
+UI --> Ingress : Consume historical data, metrics & predictions
 
 ' DevOps & Monitoring interactions
 Monitor --> Processing : Collect metrics & logs
