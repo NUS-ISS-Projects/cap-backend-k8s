@@ -1,10 +1,10 @@
-name: Deploy to GKE
+name: Deploy DIS Platform to GKE
 
 on:
   push:
     tags:
-      - '*-release'
-      - '*-staging'
+      - '*-release' # e.g., v1.0-release
+      - '*-staging' # e.g., v1.1-staging
 
 env:
   PROJECT_ID: ${{ secrets.PROJECT_ID }}
@@ -12,20 +12,18 @@ env:
   GKE_ZONE: ${{ secrets.GKE_ZONE }}
   GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
   GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-  GOOGLE_SERVICES_NOTIFICATION: ${{ secrets.GOOGLE_SERVICES_NOTIFICATION }}
-  GOOGLE_SERVICES_USER: ${{ secrets.GOOGLE_SERVICES_USER }}
-  GOOGLE_SERVICES_WATCHLIST: ${{ secrets.GOOGLE_SERVICES_WATCHLIST }}
   GCLOUD_AUTH: ${{ secrets.GCLOUD_AUTH }}
 
 jobs:
-  deploy-to-gke:
-    name: Deploy to GKE
+  deploy-dis-platform-to-gke:
+    name: Deploy DIS Platform to GKE
     runs-on: ubuntu-latest
     steps:
       # Step 1: Checkout code
-      - uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-      # Step 2: Authenticate to GCP using GKE credentials
+      # Step 2: Authenticate to GCP
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
@@ -38,7 +36,7 @@ jobs:
       # Step 4: Install the GKE gcloud auth plugin
       - name: Install gke-gcloud-auth-plugin
         run: |
-          gcloud components install gke-gcloud-auth-plugin
+          gcloud components install gke-gcloud-auth-plugin --quiet
 
       # Step 5: Enable the GKE Auth Plugin for kubectl
       - name: Configure GKE Auth Plugin
@@ -49,76 +47,91 @@ jobs:
         run: |
           gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --zone ${{ env.GKE_ZONE }} --project ${{ env.PROJECT_ID }}
 
-      # Step 7: Create the GHCR Docker config file for use with secretGenerator
-      - name: Create GHCR Docker config
+      # Step 7: Create the GHCR Docker config file for use with Kustomize secretGenerator
+      # This secret ('ghcr-secret') is referenced in your k8s deployment YAMLs for imagePullSecrets
+      - name: Create GHCR Docker config for Kustomize
         run: |
-          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n "${{ env.GHCR_USERNAME }}:${{ env.GHCR_TOKEN }}" | base64)"'"}}}' > k8s/base/.dockerconfigjson
+          mkdir -p k8s/base # Ensure the directory exists
+          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n "${{ env.GHCR_USERNAME }}:${{ env.GHCR_TOKEN }}" | base64 -w0)"'"}}}' > k8s/base/.dockerconfigjson
+        # The '-w0' for base64 is important to avoid line wraps.
 
-      # Step 8: Decode and inject google-services.json for notification-service
-      - name: Decode google-services.json for notification-service
-        run: |
-          echo "${{ env.GOOGLE_SERVICES_NOTIFICATION }}" | base64 --decode > k8s/base/google-services-notification.json
-
-      # Step 9: Decode and inject google-services.json for user-service
-      - name: Decode google-services.json for user-service
-        run: |
-          echo "${{ env.GOOGLE_SERVICES_USER }}" | base64 --decode > k8s/base/google-services-user.json
-
-      # Step 10: Decode and inject google-services.json for watchlist-service
-      - name: Decode google-services.json for watchlist-service
-        run: |
-          echo "${{ env.GOOGLE_SERVICES_WATCHLIST }}" | base64 --decode > k8s/base/google-services-watchlist.json
-
-      # Step 11: Install Kustomize
+      # Step 8: Install Kustomize
       - name: Install Kustomize
         run: |
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
 
-      # Step 12: Apply Kustomize for production
+      # Step 9: Apply Kustomize for production
       - name: Apply Kubernetes Manifests for production
         if: contains(github.ref, '-release')
         run: |
           kustomize build ./k8s/overlays/prod | kubectl apply -f -
 
-      # Step 13: Apply Kustomize for staging
+      # Step 10: Apply Kustomize for staging (if you have a staging overlay)
       - name: Apply Kubernetes Manifests for staging
         if: contains(github.ref, '-staging')
         run: |
           kustomize build ./k8s/overlays/staging | kubectl apply -f -
 
-      # Step 14: Check the deployment status for each service
-      - name: Check Rollout Status
+      # Step 11: Check the deployment status for DIS platform services
+      - name: Check Rollout Status for DIS Platform
+        id: rollout_status
         run: |
-          services=("notification-service" "user-service" "watchlist-service" "coin-service")
-          failed_services=()
+          deployments=("data-ingestion-service" "data-processing-service" "data-acquisition-service" "postgres")
+          statefulsets=("kafka" "zookeeper")
+          failed_components_list="" # Comma-separated list for output
 
-          for service in "${services[@]}"; do
-            if ! kubectl rollout status deployment/$service --timeout=10m; then
-              failed_services+=($service)
+          for dep_name in "${deployments[@]}"; do
+            echo "Checking rollout status for deployment $dep_name..."
+            if ! kubectl rollout status deployment/$dep_name --namespace default --timeout=5m; then
+              echo "Rollout failed for deployment/$dep_name"
+              failed_components_list="${failed_components_list}deployment/$dep_name,"
             fi
           done
 
-          if [ ${#failed_services[@]} -ne 0 ]; then
-            echo "Deployment failed for the following services: ${failed_services[@]}"
-            exit 1
-          else
-            echo "All services deployed successfully!"
-          fi
-
-      # Step 15: Rollback deployment if any service fails
-      - name: Rollback Failed Services
-        if: failure()
-        run: |
-          for service in "${failed_services[@]}"; do
-            kubectl rollout undo deployment/$service
-            echo "Rolled back $service due to failed deployment"
+          for sts_name in "${statefulsets[@]}"; do
+            echo "Checking rollout status for statefulset $sts_name..."
+            # For StatefulSets, a successful update means all pods are running and ready with the new revision.
+            # `kubectl rollout status statefulset` is the correct command.
+            if ! kubectl rollout status statefulset/$sts_name --namespace default --timeout=5m; then
+              echo "Rollout failed for statefulset/$sts_name"
+              failed_components_list="${failed_components_list}statefulset/$sts_name,"
+            fi
           done
 
-      # Step 16: Clean up
-      - name: Clean up
+          if [ -n "$failed_components_list" ]; then
+            # Remove trailing comma
+            failed_components_list=${failed_components_list%,}
+            echo "::set-output name=failed_components::$failed_components_list"
+            echo "Deployment failed for the following components: $failed_components_list"
+            exit 1 # Make the job fail
+          else
+            echo "All DIS platform components deployed successfully!"
+            echo "::set-output name=failed_components::" # Empty string if success
+          fi
+
+      # Step 12: Rollback deployment if any service fails
+      # This is a simplified rollback; StatefulSet rollbacks can be more complex.
+      - name: Rollback Failed Components
+        if: failure() && steps.rollout_status.outputs.failed_components != ''
         run: |
-          rm k8s/base/.dockerconfigjson
-          rm k8s/base/google-services-notification.json
-          rm k8s/base/google-services-user.json
-          rm k8s/base/google-services-watchlist.json
+          IFS=',' read -r -a components_to_rollback <<< "${{ steps.rollout_status.outputs.failed_components }}"
+          for component in "${components_to_rollback[@]}"; do
+            echo "Attempting to rollback $component..."
+            if [[ $component == deployment/* ]]; then
+              kubectl rollout undo $component --namespace default
+              echo "Rolled back $component."
+            elif [[ $component == statefulset/* ]]; then
+              kubectl rollout undo $component --namespace default
+              # Note: StatefulSet undo might have limitations or require manual intervention for data consistency
+              echo "Attempted rollback for $component. Review its status manually."
+            fi
+          done
+          echo "Rollback process attempted for failed components."
+
+      # Step 13: Clean up
+      - name: Clean up temporary files
+        if: always() # Ensure cleanup runs even if previous steps fail
+        run: |
+          rm -f k8s/base/.dockerconfigjson
+          echo "Cleaned up temporary files."

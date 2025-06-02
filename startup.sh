@@ -58,3 +58,12 @@ kubectl exec -it <postgres-pod-name> -- psql -U dis_user -d dis_db
 SELECT * FROM entity_state_record LIMIT 10;
 SELECT * FROM pg_stat_activity;
 \q
+
+
+# Get GKE ingress ip
+kubectl get ingress capstone-ingress -n default --output jsonpath='{.status.loadBalancer.ingress[0].ip}'  # Ingress IP
+kubectl get nodes -o wide # External IP
+kubectl get svc
+
+# Firewall rule for udp
+https://console.cloud.google.com/net-security/firewall-manager/firewall-policies/list?inv=1&invt=AbzCpg&project=third-hangout-460905-m7
