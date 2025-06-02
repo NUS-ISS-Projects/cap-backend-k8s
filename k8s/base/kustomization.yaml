@@ -13,6 +13,9 @@ resources:
   - postgres-service.yaml
   - zookeeper-service.yaml
   - zookeeper-statefulset.yaml
+  - hpa-data-ingestion-service.yaml
+  - hpa-data-processing-service.yaml
+  - hpa-data-acquisition-service.yaml 
 
 secretGenerator:
   # GHCR Docker Registry secret
