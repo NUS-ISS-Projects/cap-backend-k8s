@@ -1,4 +1,4 @@
-name: Deploy DIS Platform to GKE
+name: Deploy DIS Platform to GKE and DAST Scan
 
 on:
   push:
@@ -13,15 +13,18 @@ env:
   GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
   GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
   GCLOUD_AUTH: ${{ secrets.GCLOUD_AUTH }}
+  STAGING_APP_URL: ${{ secrets.STAGING_APP_URL }}
 
 jobs:
   deploy-dis-platform-to-gke:
     name: Deploy DIS Platform to GKE
     runs-on: ubuntu-latest
+    outputs: # Define outputs for this job
+      deployment_status: ${{ steps.rollout_status.outputs.failed_components == '' && 'success' || 'failure' }}
     steps:
       # Step 1: Checkout code
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       # Step 2: Authenticate to GCP
       - name: Authenticate to GCP
@@ -48,12 +51,10 @@ jobs:
           gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --zone ${{ env.GKE_ZONE }} --project ${{ env.PROJECT_ID }}
 
       # Step 7: Create the GHCR Docker config file for use with Kustomize secretGenerator
-      # This secret ('ghcr-secret') is referenced in your k8s deployment YAMLs for imagePullSecrets
       - name: Create GHCR Docker config for Kustomize
         run: |
           mkdir -p k8s/base # Ensure the directory exists
           echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n "${{ env.GHCR_USERNAME }}:${{ env.GHCR_TOKEN }}" | base64 -w0)"'"}}}' > k8s/base/.dockerconfigjson
-        # The '-w0' for base64 is important to avoid line wraps.
 
       # Step 8: Install Kustomize
       - name: Install Kustomize
@@ -67,7 +68,7 @@ jobs:
         run: |
           kustomize build ./k8s/overlays/prod | kubectl apply -f -
 
-      # Step 10: Apply Kustomize for staging (if you have a staging overlay)
+      # Step 10: Apply Kustomize for staging
       - name: Apply Kubernetes Manifests for staging
         if: contains(github.ref, '-staging')
         run: |
@@ -75,11 +76,11 @@ jobs:
 
       # Step 11: Check the deployment status for DIS platform services
       - name: Check Rollout Status for DIS Platform
-        id: rollout_status
+        id: rollout_status # This ID is crucial for the job output
         run: |
           deployments=("data-ingestion-service" "data-processing-service" "data-acquisition-service" "postgres")
           statefulsets=("kafka" "zookeeper")
-          failed_components_list="" # Comma-separated list for output
+          failed_components_list=""
 
           for dep_name in "${deployments[@]}"; do
             echo "Checking rollout status for deployment $dep_name..."
@@ -91,8 +92,6 @@ jobs:
 
           for sts_name in "${statefulsets[@]}"; do
             echo "Checking rollout status for statefulset $sts_name..."
-            # For StatefulSets, a successful update means all pods are running and ready with the new revision.
-            # `kubectl rollout status statefulset` is the correct command.
             if ! kubectl rollout status statefulset/$sts_name --namespace default --timeout=5m; then
               echo "Rollout failed for statefulset/$sts_name"
               failed_components_list="${failed_components_list}statefulset/$sts_name,"
@@ -100,18 +99,16 @@ jobs:
           done
 
           if [ -n "$failed_components_list" ]; then
-            # Remove trailing comma
             failed_components_list=${failed_components_list%,}
             echo "::set-output name=failed_components::$failed_components_list"
             echo "Deployment failed for the following components: $failed_components_list"
-            exit 1 # Make the job fail
+            exit 1 
           else
             echo "All DIS platform components deployed successfully!"
             echo "::set-output name=failed_components::" # Empty string if success
           fi
 
       # Step 12: Rollback deployment if any service fails
-      # This is a simplified rollback; StatefulSet rollbacks can be more complex.
       - name: Rollback Failed Components
         if: failure() && steps.rollout_status.outputs.failed_components != ''
         run: |
@@ -123,7 +120,6 @@ jobs:
               echo "Rolled back $component."
             elif [[ $component == statefulset/* ]]; then
               kubectl rollout undo $component --namespace default
-              # Note: StatefulSet undo might have limitations or require manual intervention for data consistency
               echo "Attempted rollback for $component. Review its status manually."
             fi
           done
@@ -131,7 +127,7 @@ jobs:
 
       # Step 13: Clean up
       - name: Clean up temporary files
-        if: always() # Ensure cleanup runs even if previous steps fail
+        if: always() 
         run: |
           rm -f k8s/base/.dockerconfigjson
           echo "Cleaned up temporary files."
@@ -140,36 +136,27 @@ jobs:
   dast-baseline-scan:
     name: DAST Baseline Scan (OWASP ZAP)
     runs-on: ubuntu-latest
-    # This job needs the deployment job to complete successfully
-    needs: deploy-dis-platform-to-gke
-    # Only run this job if a staging tag was pushed AND deployment was successful
+    needs: deploy-dis-platform-to-gke # Depends on the deployment job
+    # Only run if:
+    # 1. The deploy-dis-platform-to-gke job itself succeeded (implied by `success()` if `needs` is used, but good to be explicit with output)
+    # 2. The tag contains '-staging'
+    # 3. The deployment_status output from the deploy job is 'success'
     if: success() && contains(github.ref, '-staging') && needs.deploy-dis-platform-to-gke.outputs.deployment_status == 'success'
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          # We need the ZAP configuration file if you add one, or for context
           fetch-depth: 0 
 
       - name: OWASP ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.11.0 # Or the latest version
+        uses: zaproxy/action-baseline@v0.11.0 
         with:
-          # Target URL of your STAGING application
           target: ${{ env.STAGING_APP_URL }}
-          # Docker image name (default is owasp/zap2docker-stable)
-          # docker_name: 'owasp/zap2docker-stable'
-          # Rules file (optional, for more customized passive scanning rules)
-          # rules_file_name: 'zap-baseline-rules.tsv' 
-          # Generate report in HTML and Markdown format
           cmd_options: '-J report.json -r report.html -x report.xml'
-          # Optionally, fail the build if certain alert levels are found
-          # fail_action: true # This would fail the action if any alerts are found by default
-          # GITHUB_TOKEN is automatically provided by GitHub Actions
-          # token: ${{ secrets.GITHUB_TOKEN }} # Only needed for issue creation, not baseline scan report artifact
+          # fail_action: true # Consider enabling this later
 
       - name: Upload ZAP Scan Report
-        if: always() # Ensure report is uploaded even if ZAP finds issues (and doesn't fail the action)
+        if: always() 
         uses: actions/upload-artifact@v3
         with:
           name: zap-baseline-scan-report
@@ -177,3 +164,4 @@ jobs:
             report.html
             report.json
             report.xml
+            
