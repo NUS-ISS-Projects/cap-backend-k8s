@@ -135,3 +135,45 @@ jobs:
         run: |
           rm -f k8s/base/.dockerconfigjson
           echo "Cleaned up temporary files."
+
+
+  dast-baseline-scan:
+    name: DAST Baseline Scan (OWASP ZAP)
+    runs-on: ubuntu-latest
+    # This job needs the deployment job to complete successfully
+    needs: deploy-dis-platform-to-gke
+    # Only run this job if a staging tag was pushed AND deployment was successful
+    if: success() && contains(github.ref, '-staging') && needs.deploy-dis-platform-to-gke.outputs.deployment_status == 'success'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          # We need the ZAP configuration file if you add one, or for context
+          fetch-depth: 0 
+
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.11.0 # Or the latest version
+        with:
+          # Target URL of your STAGING application
+          target: ${{ env.STAGING_APP_URL }}
+          # Docker image name (default is owasp/zap2docker-stable)
+          # docker_name: 'owasp/zap2docker-stable'
+          # Rules file (optional, for more customized passive scanning rules)
+          # rules_file_name: 'zap-baseline-rules.tsv' 
+          # Generate report in HTML and Markdown format
+          cmd_options: '-J report.json -r report.html -x report.xml'
+          # Optionally, fail the build if certain alert levels are found
+          # fail_action: true # This would fail the action if any alerts are found by default
+          # GITHUB_TOKEN is automatically provided by GitHub Actions
+          # token: ${{ secrets.GITHUB_TOKEN }} # Only needed for issue creation, not baseline scan report artifact
+
+      - name: Upload ZAP Scan Report
+        if: always() # Ensure report is uploaded even if ZAP finds issues (and doesn't fail the action)
+        uses: actions/upload-artifact@v3
+        with:
+          name: zap-baseline-scan-report
+          path: |
+            report.html
+            report.json
+            report.xml
