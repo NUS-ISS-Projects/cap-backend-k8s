@@ -67,3 +67,6 @@ kubectl get svc
 
 # Firewall rule for udp
 https://console.cloud.google.com/net-security/firewall-manager/firewall-policies/list?inv=1&invt=AbzCpg&project=third-hangout-460905-m7
+
+# Get HPA status
+kubectl get hpa -n default
