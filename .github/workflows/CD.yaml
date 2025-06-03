@@ -157,11 +157,11 @@ jobs:
 
       - name: Upload ZAP Scan Report
         if: always() 
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: zap-baseline-scan-report
           path: |
             report.html
             report.json
             report.xml
-            
+
