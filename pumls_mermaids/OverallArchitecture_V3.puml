@@ -1,0 +1,67 @@
+@startuml
+skinparam packageStyle rectangle
+
+actor "Client / UI" as UI
+
+' On-Premise components
+package "On-Premise Environment" {
+  [DIS Traffic Source\n(Simulated DIS PDUs)] as DIS_Source
+}
+
+' Cloud components
+package "Cloud Environment" {
+  package "Ingestion & Messaging" {
+    [Data Ingestion Service\n(Cloud-hosted)] as Ingestion
+    [Message Broker\n(Kafka/RabbitMQ)] as Broker
+  }
+  
+  package "Processing & Analytics" {
+    [Processing Service\n(Stream/Batch ETL)] as Processing
+    [ML/Forecasting Service\n(Llama-based Models)] as MLService
+    [Database / Data Storage\n(Time-series/Relational)] as Storage
+  }
+  
+  package "Data Acquisition" {
+    [Data Acquisition Service\n(Query Historical Data & Metrics)] as DataAcquire
+  }
+  
+  package "Ingress & Security" {
+    [Kubernetes Ingress\n(REST, TLS, Routing)] as Ingress
+    [Authentication Service\n(JWT, RBAC)] as AuthService
+  }
+  
+  package "DevOps & Monitoring" {
+    [Monitoring & Logging\n(Prometheus, Grafana)] as Monitor
+    [CI/CD Pipeline\n(GitHub Actions, Terraform)] as CICD
+  }
+}
+
+' Interactions between on-premise and cloud
+DIS_Source --> Ingestion : Send simulated DIS PDUs\n(Secure Channel: VPN/TLS)
+Ingestion --> Broker : Publish structured data
+Broker --> Processing : Stream data for processing
+Processing --> Storage : Write aggregated/clean data
+
+' Data Acquisition for historical queries and metrics
+Storage --> DataAcquire : Expose historical data via optimized queries
+' MODIFIED LABEL AND DESCRIPTION for DataAcquire to Ingress
+DataAcquire --> Ingress : Provide REST endpoints for historical data & aggregated metrics 
+
+' ML & API interaction
+Processing --> MLService : Provide aggregated data
+MLService --> Storage : Query historical & real-time data
+MLService --> Ingress : Serve predictions/alerts\n(REST)
+
+' Ingress and security flow
+Ingress --> AuthService : Enforce authentication & security
+UI --> Ingress : Consume historical data, metrics & predictions
+
+' DevOps & Monitoring interactions
+Monitor --> Processing : Collect metrics & logs
+Monitor --> MLService : Monitor model performance
+Monitor --> Ingress : Monitor API usage
+CICD --> Ingestion : CI/CD for cloud components
+CICD --> Processing : Automated build/test/deploy
+CICD --> MLService : Automated CI/CD
+
+@enduml

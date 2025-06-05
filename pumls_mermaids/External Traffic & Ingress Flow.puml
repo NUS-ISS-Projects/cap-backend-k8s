@@ -1,0 +1,52 @@
+@startuml
+' Styling
+skinparam actorStyle awesome
+skinparam handwritten false
+skinparam roundcorner 20
+skinparam shadowing true
+skinparam defaultFontName "Inter"
+skinparam defaultFontSize 12
+skinparam Linetype ortho
+skinparam cloud {
+  borderColor #0F9D58
+  backgroundColor #E6F9EE
+}
+skinparam node {
+  borderColor #666666
+  backgroundColor #D3D3D3
+}
+skinparam service {
+  borderColor #F4B400
+  backgroundColor #FFF8E1
+}
+
+' Actors
+actor "Client / UI" as UI
+actor "DIS PDU Emitter" as DIS_Source
+
+cloud "Google Cloud Platform" {
+  package "GKE Cluster" {
+    node "GKE Ingress\n'capstone-ingress'" as ingress
+    node "GKE Worker Node(s)" as gke_node_pool
+
+    package "Kubernetes Services" {
+        node "Service (NodePort)\n'data-ingestion-udp'" as svc_ingestion_udp_nodeport <<Service>>
+        node "Service (ClusterIP)\n'data-acquisition'" as svc_acquisition_clusterip <<Service>>
+        node "Service (ClusterIP)\n'data-ingestion (http)'" as svc_ingestion_clusterip <<Service>>
+        node "Service (ClusterIP)\n'data-processing (http)'" as svc_processing_clusterip <<Service>>
+    }
+  }
+}
+
+' Relationships
+UI -down-> ingress : "1. HTTPS API Calls"
+ingress --> svc_acquisition_clusterip : 2. Route /api/acquisition/*
+ingress --> svc_ingestion_clusterip
+ingress --> svc_processing_clusterip
+
+DIS_Source -down-> gke_node_pool : "1. UDP PDUs to Node IP:32000"
+gke_node_pool --> svc_ingestion_udp_nodeport : "2. Route to Service"
+svc_ingestion_udp_nodeport --> svc_ingestion_clusterip : "3. Forwards to Pod"
+
+
+@enduml

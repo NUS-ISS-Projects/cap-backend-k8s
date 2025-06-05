@@ -1,0 +1,49 @@
+@startuml
+' Styling
+skinparam handwritten false
+skinparam roundcorner 20
+skinparam shadowing true
+skinparam defaultFontName "Inter"
+skinparam defaultFontSize 12
+skinparam Linetype ortho
+skinparam artifact {
+  borderColor #4285F4
+  backgroundColor #E8F0FE
+}
+skinparam queue {
+  borderColor #795548
+  backgroundColor #EFEBE9
+}
+skinparam database {
+  borderColor #DB4437
+  backgroundColor #FCE8E6
+}
+skinparam node {
+  borderColor #A8A8A8
+  backgroundColor #F5F5F5
+}
+
+package "GKE Cluster" {
+    node "Pod: data-ingestion" as pod_ingestion {
+        artifact "Data Ingestion\nService"
+    }
+
+    node "Pod: kafka" as pod_kafka {
+        queue "Kafka\nBroker"
+    }
+
+    node "Pod: data-processing" as pod_processing {
+        artifact "Data Processing\nService"
+    }
+
+    node "Pod: postgres" as pod_postgres {
+        database "PostgreSQL\nDatabase"
+    }
+}
+
+' Relationships
+pod_ingestion -> pod_kafka : 1. Publish PDU JSON
+pod_kafka -> pod_processing : 2. Consume PDU JSON
+pod_processing -> pod_postgres: 3. Store processed record
+
+@enduml

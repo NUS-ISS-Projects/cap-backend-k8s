@@ -1,0 +1,38 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+' Styling
+skinparam actorStyle awesome
+skinparam linetype ortho
+
+LAYOUT_WITH_LEGEND()
+
+' Actors
+Person(developer, "Developer")
+Person(client_ui, "Client / UI")
+System(dis_source, "DIS PDU Emitter", "Sends UDP packets")
+
+System_Boundary(gcp, "Google Cloud Platform") {
+    System_Boundary(gke, "GKE Cluster") {
+        Container(ingestion, "Data Ingestion", "Java/Spring", "Receives UDP, publishes to Kafka")
+        Container(processing, "Data Processing", "Java/Spring", "Consumes from Kafka, writes to DB")
+        Container(acquisition, "Data Acquisition", "Java/Spring", "Serves API for historical & real-time data")
+
+        ContainerDb(kafka, "Apache Kafka", "Message Broker", "Queues incoming PDU data")
+        ContainerDb(postgres, "PostgreSQL", "Database", "Stores processed PDU records")
+    }
+}
+
+' Relationships
+developer -> gke : "Deploys services via CI/CD"
+
+client_ui -> acquisition : "HTTPS API Calls (via Ingress)"
+dis_source -> ingestion : "Sends DIS PDUs (UDP)"
+
+Rel_D(ingestion, kafka, "Publishes raw PDU data")
+Rel_D(kafka, processing, "Consumes raw PDU data")
+Rel_D(processing, postgres, "Stores processed records")
+Rel_D(acquisition, postgres, "Queries historical records")
+Rel_D(acquisition, ingestion, "Gets real-time metrics")
+
+@enduml

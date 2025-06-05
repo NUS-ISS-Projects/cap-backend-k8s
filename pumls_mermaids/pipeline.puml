@@ -1,0 +1,44 @@
+@startuml
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "Developer" as Dev
+
+package "Source Control (GitHub)" {
+  [Git Repository] as Repo
+}
+
+package "CI/CD Automation (GitHub Actions)" {
+  
+  package "CI Pipeline (Proposed)" {
+    rectangle "Build & Test" as CI_Build
+    rectangle "Build & Push Image" as CI_Image
+  }
+  
+  package "CD Pipeline (Implemented)" {
+    rectangle "Deploy to GKE" as CD_Deploy
+    rectangle "DAST Scan" as CD_DAST
+  }
+}
+
+package "GKE Environments" {
+    [Staging Cluster] as Staging
+    [Production Cluster] as Prod
+}
+
+Dev -right-> Repo : Push to feature branch / PR
+Repo -> CI_Build : Trigger on push/PR
+CI_Build --> CI_Image : On Success
+CI_Image -> Repo : Push image to GHCR
+
+Dev -> Repo : Create `*-staging` tag
+Repo -> CD_Deploy : Trigger on Staging Tag
+CD_Deploy --> Staging : Deploy with Kustomize
+CD_Deploy --> CD_DAST : On Success
+CD_DAST --> Staging : Run OWASP ZAP Scan
+
+Dev -> Repo : Create `*-release` tag
+Repo -> CD_Deploy : Trigger on Release Tag
+CD_Deploy --> Prod : Deploy with Kustomize
+
+@enduml

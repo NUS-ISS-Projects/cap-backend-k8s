@@ -1,0 +1,53 @@
+@startuml
+' Styling
+skinparam handwritten false
+skinparam roundcorner 20
+skinparam shadowing true
+skinparam defaultFontName "Inter"
+skinparam defaultFontSize 12
+skinparam Linetype ortho
+skinparam package {
+  borderColor #A8A8A8
+  backgroundColor #F5F5F5
+}
+skinparam node {
+  borderColor #666666
+  backgroundColor #D3D3D3
+}
+
+package "GKE Cluster" {
+    node "GKE Control Plane" as gke_cp
+    
+    package "Workloads" {
+        node "Deployment\ndata-ingestion-service" as dep_ingestion
+        node "Deployment\ndata-processing-service" as dep_processing
+        node "Deployment\ndata-acquisition-service" as dep_acquisition
+        node "Deployment\npostgres" as dep_postgres
+        node "StatefulSet\nkafka" as sts_kafka
+        node "StatefulSet\nzookeeper" as sts_zookeeper
+    }
+
+    package "Autoscaling" {
+        node "HPA 'data-ingestion-hpa'" as hpa_ingestion
+        node "HPA 'data-processing-hpa'" as hpa_processing
+        node "HPA 'data-acquisition-hpa'" as hpa_acquisition
+    }
+}
+
+' Relationships
+gke_cp ..> dep_ingestion
+gke_cp ..> dep_processing
+gke_cp ..> dep_acquisition
+gke_cp ..> dep_postgres
+gke_cp ..> sts_kafka
+gke_cp ..> sts_zookeeper
+
+gke_cp ..> hpa_ingestion
+gke_cp ..> hpa_processing
+gke_cp ..> hpa_acquisition
+
+hpa_ingestion -up-> dep_ingestion : Scales
+hpa_processing -up-> dep_processing : Scales
+hpa_acquisition -up-> dep_acquisition : Scales
+
+@enduml

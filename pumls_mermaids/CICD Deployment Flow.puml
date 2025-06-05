@@ -1,0 +1,44 @@
+@startuml
+' Styling
+skinparam actorStyle awesome
+skinparam handwritten false
+skinparam roundcorner 20
+skinparam shadowing true
+skinparam defaultFontName "Inter"
+skinparam defaultFontSize 12
+skinparam Linetype ortho
+skinparam package {
+  borderColor #A8A8A8
+  backgroundColor #F5F5F5
+}
+skinparam node {
+  borderColor #666666
+  backgroundColor #D3D3D3
+}
+
+' Actors
+actor "Developer" as Developer
+
+' Components
+package "GitHub" {
+  node "GitHub Actions\n(CI/CD Pipeline)" as gh_actions
+  node "GitHub Repository\n(Source Code)" as gh_repo
+}
+
+cloud "Google Cloud Platform" {
+    package "Google Kubernetes Engine (GKE) Cluster" {
+        node "GKE Control Plane" as gke_cp
+        package "GKE Node Pool" as gke_nodes {
+            artifact "Deployments & Pods"
+        }
+    }
+}
+
+
+' Relationships
+Developer --> gh_repo : 1. Git Push (Code Changes)
+gh_repo --> gh_actions : 2. Trigger CI/CD Workflow
+gh_actions --> gke_cp : 3. Deploy to GKE\n(kubectl apply -k)
+gke_cp ..> gke_nodes : 4. Manages workloads
+
+@enduml
