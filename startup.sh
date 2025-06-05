@@ -62,7 +62,7 @@ SELECT * FROM pg_stat_activity;
 
 # Get GKE ingress ip
 kubectl get ingress capstone-ingress -n default --output jsonpath='{.status.loadBalancer.ingress[0].ip}'  # Ingress IP
-kubectl get nodes -o wide # External IP
+kubectl get nodes -o wide # External IP, for UDP comms
 kubectl get svc
 
 # Firewall rule for udp
