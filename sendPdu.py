@@ -18,7 +18,7 @@ from opendis.RangeCoordinates import GPS, deg2rad
 
 # --- Simulation Configuration ---
 UDP_PORT = 32000
-DESTINATION_ADDRESS = "35.240.132.69"  # Replace with `minikube ip` or target GKE Node IP
+DESTINATION_ADDRESS = "34.142.175.247"  # Replace with `minikube ip` or target GKE Node IP
 
 SIMULATION_DURATION_SECONDS = 9999
 PDUS_PER_SECOND_PER_ENTITY = 2
