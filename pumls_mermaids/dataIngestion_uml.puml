@@ -1,0 +1,61 @@
+@startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam shadowing true
+skinparam roundcorner 20
+skinparam defaultFontName "Inter"
+
+package "com.cap.dis.controller" {
+    class InternalMetricsController {
+        - metricsTracker: DisMetricsTracker
+        + getRealTimeDisMetrics(): ResponseEntity<RealTimeMetrics>
+    }
+    class HealthController {
+        + healthCheck(): ResponseEntity<String>
+    }
+}
+
+package "com.cap.dis.service" {
+    class UdpListenerService {
+        - port: int
+        - kafkaProducerService: KafkaProducerService
+        - metricsTracker: DisMetricsTracker
+        + startListening(): void
+        - decodeDisPdu(byte[]): String
+        - pduToJson(Pdu): String
+    }
+    class KafkaProducerService {
+        - kafkaTemplate: KafkaTemplate<String, String>
+        - topic: String
+        + sendMessage(String): void
+    }
+    class DisMetricsTracker {
+        - pduReceiveTimestamps: ConcurrentLinkedDeque<Long>
+        - lastPduReceivedTimestampMsAtomic: AtomicLong
+        + pduReceived(): void
+        + getMetrics(): RealTimeMetrics
+    }
+}
+
+package "com.cap.dis" {
+     class UdpListenerInitializer {
+        - udpListenerService: UdpListenerService
+        + run(String...): void
+    }
+}
+
+package "com.cap.dis.model" {
+    class RealTimeMetrics <<DTO>> {
+        - lastPduReceivedTimestampMs: long
+        - pdusInLastSixtySeconds: long
+        - averagePduRatePerSecondLastSixtySeconds: double
+    }
+}
+
+UdpListenerInitializer ..> UdpListenerService : invokes
+InternalMetricsController ..> DisMetricsTracker : uses
+UdpListenerService ..> KafkaProducerService : uses
+UdpListenerService ..> DisMetricsTracker : uses
+DisMetricsTracker ..> RealTimeMetrics : creates
+
+@enduml

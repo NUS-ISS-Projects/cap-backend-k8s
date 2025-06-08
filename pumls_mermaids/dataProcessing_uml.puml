@@ -1,0 +1,61 @@
+@startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam shadowing true
+skinparam roundcorner 20
+skinparam defaultFontName "Inter"
+
+interface PduParser {
+  + parseAndStore(String): void
+}
+
+class PduParserFactory {
+  - parsers: Map<String, PduParser>
+  + getParser(String): PduParser
+}
+
+class PduProcessingService {
+  - objectMapper: ObjectMapper
+  - parserFactory: PduParserFactory
+  + consume(String): void
+}
+
+class EntityStatePduParser {
+  - repository: EntityStateRepository
+  + parseAndStore(String): void
+}
+
+class FirePduParser {
+  - repository: FireEventRepository
+  + parseAndStore(String): void
+}
+
+class DefaultPduParser {
+  + parseAndStore(String): void
+}
+
+package "com.cap.dis.repository" {
+    interface EntityStateRepository <<JPA>>
+    interface FireEventRepository <<JPA>>
+}
+
+package "com.cap.dis.model" {
+    class EntityStateRecord <<Entity>>
+    class FireEventRecord <<Entity>>
+}
+
+
+PduProcessingService o--> PduParserFactory
+PduParserFactory --> PduParser : creates
+
+PduParser <|.. EntityStatePduParser
+PduParser <|.. FirePduParser
+PduParser <|.. DefaultPduParser
+
+EntityStatePduParser ..> EntityStateRepository
+FirePduParser ..> FireEventRepository
+
+EntityStatePduParser ..> EntityStateRecord : creates
+FirePduParser ..> FireEventRecord : creates
+
+@enduml

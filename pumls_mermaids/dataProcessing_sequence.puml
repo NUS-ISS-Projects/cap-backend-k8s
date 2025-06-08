@@ -1,0 +1,38 @@
+@startuml
+autonumber
+participant "Kafka Broker" as Kafka
+participant "PduProcessingService" as Service
+participant "PduParserFactory" as Factory
+participant "EntityStatePduParser" as Parser
+participant "EntityStateRepository" as Repo
+participant "PostgreSQL DB" as DB
+
+Kafka -> Service : Delivers JSON message
+activate Service
+
+Service -> Factory : getParser("EntityStatePdu")
+activate Factory
+Factory -> Parser : <<create>>
+Factory --> Service : returns Parser instance
+deactivate Factory
+
+Service -> Parser : parseAndStore(jsonMessage)
+activate Parser
+
+Parser -> Parser : Deserializes JSON to DTO
+Parser -> Parser : Creates EntityStateRecord
+
+Parser -> Repo : save(record)
+activate Repo
+Repo -> DB : INSERT INTO entity_state_record...
+activate DB
+DB --> Repo :
+deactivate DB
+Repo --> Parser :
+deactivate Repo
+
+Parser --> Service :
+deactivate Parser
+
+deactivate Service
+@enduml

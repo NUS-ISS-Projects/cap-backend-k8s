@@ -1,0 +1,50 @@
+@startuml
+!theme plain
+skinparam node {
+    roundCorner 20
+}
+skinparam shadowing true
+skinparam defaultFontName "Inter"
+skinparam linetype ortho
+
+node "GKE Worker Node" {
+    package "Pod: data-acquisition-service-xyz" {
+        component "Container" as C_ACQ {
+            "**Image**: ghcr.io/.../data-acquisition"
+            "**Ports**: 8080/TCP"
+            "**CPU**: 100m req / 500m lim"
+            "**Memory**: 256Mi req / 512Mi lim"
+            "**Probes**: Ready, Live @ /api/acquisition/health"
+        }
+    }
+
+    package "Pod: data-ingestion-service-abc" {
+        component "Container" as C_ING {
+            "**Image**: ghcr.io/.../data-ingestion"
+            "**Ports**: 8080/TCP, 3000/UDP"
+            "**CPU**: 100m req / 500m lim"
+            "**Memory**: 256Mi req / 512Mi lim"
+            "**Probes**: Ready, Live @ /api/ingestion/health"
+        }
+    }
+}
+
+package "Kubernetes Controllers" {
+    component "HPA 'data-acquisition-hpa'" as HPA_ACQ {
+        "**Target**: Deployment 'data-acquisition-service'"
+        "**Metric**: CPU Utilization @ 70%"
+        "**Replicas**: Min 1, Max 3"
+    }
+    component "Service 'data-acquisition-service'" as SVC_ACQ {
+        "**Type**: ClusterIP"
+        "**Selector**: app=data-acquisition-service"
+        "**Port**: 8080 -> 8080"
+    }
+    component "Ingress" as ING_CTRL
+}
+
+HPA_ACQ -up-> C_ACQ : Scales
+ING_CTRL -right-> SVC_ACQ : Routes Traffic
+SVC_ACQ -down-> C_ACQ : Selects Pod
+
+@enduml

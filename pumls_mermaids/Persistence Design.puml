@@ -1,0 +1,33 @@
+@startuml
+!theme plain
+skinparam linetype ortho
+skinparam shadowing true
+skinparam roundcorner 20
+skinparam defaultFontName "Inter"
+
+component "Data Processing Service" as proc_svc
+database "PostgreSQL" as db {
+  storage "entity_state_record" as es_tbl {
+    id: Long
+    site: int
+    application: int
+    entity: int
+    locationX: double
+    locationY: double
+    locationZ: double
+    timestamp: long
+  }
+  storage "fire_event_record" as fe_tbl {
+    id: Long
+    firingSite: int
+    targetSite: int
+    munitionSite: int
+    timestamp: long
+  }
+}
+component "Data Acquisition Service" as acq_svc
+
+proc_svc -> db : Writes Records\n(INSERT)
+acq_svc -> db : Reads Records\n(SELECT)
+
+@enduml
