@@ -1,0 +1,33 @@
+@startuml
+!theme plain
+skinparam componentStyle uml2
+skinparam Linetype ortho
+skinparam defaultFontName "Inter"
+skinparam defaultFontSize 12
+skinparam roundcorner 20
+skinparam shadowing true
+
+' Define external actors that interact with the system
+actor "UI / API Client" as UI_Client
+actor "PDU Emitter" as PDU_Emitter
+
+' Define the system boundary and its internal components
+package "DIS Platform Subsystems" {
+  component "Data Acquisition Svc" as ACQ
+  component "Data Ingestion Svc" as ING
+  component "Data Processing Svc" as PROC
+  queue "Kafka" as KAFKA
+  database "PostgreSQL" as DB
+}
+
+' Define the interactions between actors and subsystems
+UI_Client -> ACQ : [HTTP]\n/api/acquisition/*
+PDU_Emitter -> ING : [UDP]\nDIS PDUs
+
+' Define the interactions between internal subsystems
+ACQ --> DB : [SQL]\nSELECT ...
+ACQ .> ING : [HTTP]\nGET /internal/metrics/realtime
+ING -> KAFKA : [Kafka Message]\nPublish JSON
+KAFKA -> PROC : [Kafka Message]\nConsume JSON
+PROC --> DB : [SQL]\nINSERT ...
+@enduml

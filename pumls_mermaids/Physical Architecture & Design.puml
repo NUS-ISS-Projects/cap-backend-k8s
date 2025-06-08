@@ -1,0 +1,62 @@
+@startuml
+!theme plain
+skinparam actorStyle awesome
+skinparam linetype ortho
+skinparam roundcorner 20
+skinparam shadowing true
+skinparam defaultFontName "Inter"
+skinparam defaultFontSize 12
+
+cloud "Google Cloud Platform" {
+    package "Google Kubernetes Engine (GKE) Cluster" as GKE_Cluster {
+        node "GKE Control Plane (Managed by Google)" as GKE_Control_Plane {
+            component "API Server"
+            component "Scheduler"
+            component "Controller Manager"
+        }
+
+        node "GKE Worker Node(s)" as GKE_Node {
+            package "Stateless Workloads (Deployments)" {
+                node "Pod(s): data-acquisition" as Pod_Acquisition {
+                    component "data-acquisition-service"
+                }
+                node "Pod(s): data-processing" as Pod_Processing {
+                    component "data-processing-service"
+                }
+                node "Pod(s): data-ingestion" as Pod_Ingestion {
+                    component "data-ingestion-service"
+                }
+            }
+
+            package "Stateful Workloads" {
+                 node "Pod: postgres" as Pod_DB {
+                    database "PostgreSQL"
+                }
+                node "Pod(s): kafka" as Pod_Kafka {
+                    queue "Kafka"
+                }
+                node "Pod(s): zookeeper" as Pod_ZK {
+                    component "Zookeeper"
+                }
+            }
+        }
+    }
+
+    package "GKE Networking" {
+        node "GKE Ingress" as Ingress
+        node "UDP NodePort Service" as NodePort
+    }
+}
+
+actor "Client / UI" as Client
+actor "DIS PDU Emitter" as Emitter
+
+Client --> Ingress : HTTP/S API Calls
+Emitter --> NodePort : UDP PDU Streams
+
+Ingress --> Pod_Acquisition
+NodePort --> Pod_Ingestion
+
+GKE_Control_Plane ..> GKE_Node : Manages Pods & Resources
+
+@enduml

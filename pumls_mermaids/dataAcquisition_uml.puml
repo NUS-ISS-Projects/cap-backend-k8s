@@ -1,0 +1,63 @@
+@startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam shadowing true
+skinparam roundcorner 20
+skinparam defaultFontName "Inter"
+
+package "com.cap.dataAcquisition.controller" {
+    class HistoricalDataController {
+        - metricsService: MetricsService
+        - realTimeMetricsService: RealTimeMetricsService
+        - entityStateRepository: EntityStateRepository
+        - fireEventRepository: FireEventRepository
+        + getAggregatedMetricsOverview(...)
+        + getRealTimeDisMetrics(...)
+        + getEntityStates(...)
+        + getFireEvents(...)
+    }
+}
+
+package "com.cap.dataAcquisition.service" {
+    class MetricsService {
+        - entityStateRepository: EntityStateRepository
+        - fireEventRepository: FireEventRepository
+        + getAggregatedMetrics(String): AggregatedMetricsOverview
+        - calculatePeakLoad(...): PeakLoadInfo
+    }
+    class RealTimeMetricsService {
+        - restTemplate: RestTemplate
+        + getLatestMetrics(): RealTimeMetrics
+    }
+}
+
+package "com.cap.dataAcquisition.repository" {
+    interface EntityStateRepository <<JPA>>
+    interface FireEventRepository <<JPA>>
+}
+
+package "com.cap.dataAcquisition.model" {
+    class AggregatedMetricsOverview <<DTO>>
+    class RealTimeMetrics <<DTO>>
+}
+
+package "External Services" {
+    ' Corrected "component" to "class" to resolve the error
+    class "Data Ingestion Service" as IngestionSvc
+}
+
+
+HistoricalDataController o--> MetricsService
+HistoricalDataController o--> RealTimeMetricsService
+HistoricalDataController ..> EntityStateRepository
+HistoricalDataController ..> FireEventRepository
+
+MetricsService o--> EntityStateRepository
+MetricsService o--> FireEventRepository
+
+RealTimeMetricsService ..> IngestionSvc : HTTP GET
+
+MetricsService ..> AggregatedMetricsOverview : creates
+RealTimeMetricsService ..> RealTimeMetrics : creates
+
+@enduml

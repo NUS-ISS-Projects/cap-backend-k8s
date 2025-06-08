@@ -1,0 +1,36 @@
+@startuml
+autonumber
+actor "PDU Emitter" as Emitter
+
+participant "UdpListenerService" as Listener
+participant "DisMetricsTracker" as Tracker
+participant "PduFactory" as Factory
+participant "KafkaProducerService" as Producer
+participant "Kafka Broker" as Kafka
+
+Emitter -> Listener : Sends UDP Packet
+activate Listener
+
+Listener -> Tracker : pduReceived()
+activate Tracker
+Tracker --> Listener :
+deactivate Tracker
+
+Listener -> Factory : createPdu(rawData)
+activate Factory
+Factory --> Listener : Returns PDU object
+deactivate Factory
+
+Listener -> Listener : pduToJson(pdu)
+activate Listener
+Listener --> Listener : Returns JSON String
+deactivate Listener
+
+Listener -> Producer : sendMessage(json)
+activate Producer
+
+Producer -> Kafka : send("dis-pdus", json)
+deactivate Producer
+deactivate Listener
+
+@enduml

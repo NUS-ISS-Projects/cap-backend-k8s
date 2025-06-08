@@ -1,0 +1,60 @@
+@startuml
+!theme plain
+skinparam handwritten false
+skinparam roundcorner 20
+skinparam shadowing true
+skinparam defaultFontName "Inter"
+skinparam defaultFontSize 12
+skinparam Linetype ortho
+
+skinparam cloud {
+  borderColor #0F9D58
+  backgroundColor #E6F9EE
+}
+skinparam node {
+  borderColor #666666
+  backgroundColor #D3D3D3
+}
+skinparam component {
+  borderColor #4285F4
+  backgroundColor #E8F0FE
+}
+skinparam file {
+  borderColor #F4B400
+  backgroundColor #FFF8E1
+}
+
+actor Developer
+
+cloud "GKE Cluster" as gke {
+  node "GKE Control Plane" as cp {
+    component "API Server"
+    component "Scheduler"
+    component "HPA Controller" as hpa_controller
+  }
+
+  node "GKE Node Pool" as nodes {
+    file "Deployment\n(data-ingestion)" as dep_ingestion
+    file "Deployment\n(data-processing)" as dep_processing
+    file "Deployment\n(data-acquisition)" as dep_acquisition
+    file "StatefulSet\n(kafka, zookeeper)" as dep_stateful
+    file "Deployment\n(postgres)" as dep_db
+
+    dep_ingestion <.up. hpa_controller : Scales
+    dep_processing <.up. hpa_controller : Scales
+    dep_acquisition <.up. hpa_controller : Scales
+  }
+
+  cp <--> nodes : Manages
+}
+
+package "GitHub" {
+  node "GitHub Repository" as repo
+  node "GitHub Actions (CI/CD)" as actions
+}
+
+Developer -> repo : 1. Git Push (Tag)
+repo -> actions : 2. Trigger Workflow
+actions -> cp : 3. Deploy (kubectl apply -k)
+
+@enduml

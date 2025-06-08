@@ -1,0 +1,44 @@
+@startuml
+autonumber
+actor "Client / UI" as Client
+
+participant "HistoricalDataController" as Controller
+participant "MetricsService" as Service
+participant "EntityStateRepository" as ESRepo
+participant "FireEventRepository" as FERepo
+database "PostgreSQL DB" as DB
+
+Client -> Controller : GET /api/acquisition/metrics?period=last60minutes
+activate Controller
+
+Controller -> Service : getAggregatedMetrics("last60minutes")
+activate Service
+
+Service -> ESRepo : findByTimestampBetween(...)
+activate ESRepo
+ESRepo -> DB : SELECT * FROM entity_state_record...
+activate DB
+DB --> ESRepo : Returns EntityStateRecord list
+deactivate DB
+ESRepo --> Service :
+deactivate ESRepo
+
+Service -> FERepo : findByTimestampBetween(...)
+activate FERepo
+FERepo -> DB : SELECT * FROM fire_event_record...
+activate DB
+DB --> FERepo : Returns FireEventRecord list
+deactivate DB
+FERepo --> Service :
+deactivate FERepo
+
+Service -> Service : calculatePeakLoad(...)
+Service -> Service : new AggregatedMetricsOverview(...)
+
+Service --> Controller : Returns AggregatedMetricsOverview DTO
+deactivate Service
+
+Controller --> Client : 200 OK with JSON Body
+deactivate Controller
+
+@enduml

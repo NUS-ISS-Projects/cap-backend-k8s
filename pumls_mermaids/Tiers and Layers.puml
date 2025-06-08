@@ -1,0 +1,58 @@
+@startuml
+!theme plain
+skinparam handwritten false
+skinparam roundcorner 20
+skinparam shadowing true
+skinparam defaultFontName "Inter"
+skinparam defaultFontSize 12
+skinparam Linetype ortho
+skinparam package {
+  borderColor #A8A8A8
+  backgroundColor #F5F5F5
+}
+skinparam component {
+  borderColor #0078D4
+  backgroundColor #E6F3FF
+}
+skinparam queue {
+  borderColor #795548
+  backgroundColor #EFEBE9
+}
+skinparam database {
+  borderColor #DB4437
+  backgroundColor #FCE8E6
+}
+skinparam actor {
+  backgroundColor #FFDDAA
+  borderColor #D39D38
+}
+
+actor "DIS Emitter" as Emitter
+actor "Client / UI" as Client
+
+package "Ingestion Tier" {
+  component "Data Ingestion Service" as Ingestion
+}
+
+package "Messaging Tier" {
+  queue "Apache Kafka" as Kafka
+}
+
+package "Processing Tier" {
+  component "Data Processing Service" as Processing
+}
+
+package "Data & Presentation Tier" {
+  database "PostgreSQL DB" as DB
+  component "Data Acquisition Service" as Acquisition
+}
+
+Emitter -down-> Ingestion : 1. Raw DIS PDUs (UDP)
+Ingestion -down-> Kafka : 2. Publish PDU as JSON
+Kafka -down-> Processing : 3. Consume PDU JSON
+Processing -down-> DB : 4. Store Structured Record
+Acquisition -up-> DB : 5a. Query Historical Data (SQL)
+Acquisition .up.> Ingestion : 5b. Fetch Real-time Metrics (HTTP)
+Client -up-> Acquisition : 6. Request Data (REST API)
+
+@enduml

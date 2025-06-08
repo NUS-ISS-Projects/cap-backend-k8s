@@ -1,0 +1,37 @@
+@startuml
+!theme plain
+skinparam rectangle {
+    roundCorner 20
+}
+skinparam shadowing true
+skinparam defaultFontName "Inter"
+
+package "GKE Cluster" {
+    node "Data Acquisition Pod" as DAQ {
+        component "Java / Spring Boot"
+    }
+    node "Data Processing Pod" as DP {
+        component "Java / Spring Boot"
+    }
+    node "Data Ingestion Pod" as DI {
+        component "Java / Spring Boot"
+    }
+    node "Kafka Pod" as KAFKA {
+        component "Apache Kafka"
+    }
+    node "PostgreSQL Pod" as DB {
+        database "PostgreSQL"
+    }
+}
+
+cloud "DevOps Toolchain" {
+    component "GitHub Actions (CI/CD)" as GHA
+    component "Docker (Containerization)" as DOCKER
+    component "Kustomize (Config)" as KUSTOMIZE
+}
+
+GHA --> GKE : Deploys
+DOCKER -- GHA : Builds Image for
+KUSTOMIZE -- GHA : Configures
+
+@enduml
