@@ -13,7 +13,7 @@ import time
 import random
 from io import BytesIO
 from opendis.DataOutputStream import DataOutputStream
-from opendis.dis7 import EntityStatePdu, FirePdu, CollisionPdu, EntityID as DisEntityID
+from opendis.dis7 import EntityStatePdu, FirePdu, CollisionPdu, DataPdu, EntityID as DisEntityID
 from opendis.RangeCoordinates import GPS, deg2rad
 
 # --- Simulation Configuration ---
@@ -106,7 +106,7 @@ def update_entity_position(entity, dt): #
 
 def send_entity_state_pdu(entity_state):
     pdu = EntityStatePdu()
-    pdu.protocolVersion = entity_state["protocol_version"]
+    pdu.protocolVersion = 7 #entity_state["protocol_version"]
     pdu.exerciseID = DEFAULT_EXERCISE_ID
     pdu.pduType = 1
     pdu.timestamp = get_current_dis_timestamp() # MODIFIED
@@ -115,18 +115,30 @@ def send_entity_state_pdu(entity_state):
     pdu.entityID.siteID = entity_state["id_obj"].siteID 
     pdu.entityID.applicationID = entity_state["id_obj"].applicationID 
     pdu.entityID.entityID = entity_state["id_obj"].entityID 
+    pdu.forceID = entity_state["force_id"] 
+    pdu.numberOfArticulationParameters = 2
     pdu.marking.setString(entity_state["marking"]) 
     pdu.entityAppearance = 0
     pdu.capabilities = 0
+    pdu.entityLinearVelocity.x = entity_state["velocity_x"]
+    pdu.entityLinearVelocity.y = entity_state["velocity_y"]
+    pdu.entityLinearVelocity.z = entity_state["velocity_z"]
     pdu.entityLocation.x = entity_state["location_x"] 
     pdu.entityLocation.y = entity_state["location_y"] 
     pdu.entityLocation.z = entity_state["location_z"] 
     pdu.entityOrientation.psi = entity_state["orientation_psi"] 
     pdu.entityOrientation.theta = entity_state["orientation_theta"] 
     pdu.entityOrientation.phi = entity_state["orientation_phi"] 
+    pdu.deadReckoningParameters.algo = 4
+    pdu.deadReckoningParameters.otherParam = 0
+    pdu.deadReckoningParameters.entityLinearAcceleration.x = entity_state["velocity_x"]
+    pdu.deadReckoningParameters.entityLinearAcceleration.y = entity_state["velocity_y"]
+    pdu.deadReckoningParameters.entityLinearAcceleration.z = entity_state["velocity_z"]
+    pdu.deadReckoningParameters.entityAngularVelocity.x = entity_state["velocity_x"]
+    pdu.deadReckoningParameters.entityAngularVelocity.y = entity_state["velocity_y"]
+    pdu.deadReckoningParameters.entityAngularVelocity.z = entity_state["velocity_z"]
 
     if pdu.protocolVersion == 7:
-        pdu.forceId = entity_state["force_id"] 
         pdu.entityType.entityKind = entity_state["entity_kind"] 
         pdu.entityType.domain = entity_state["domain"] 
         pdu.entityType.country = entity_state["country"] 
@@ -134,6 +146,13 @@ def send_entity_state_pdu(entity_state):
         pdu.entityType.subcategory = entity_state["subcategory"] 
         pdu.entityType.specific = entity_state["specific"] 
         pdu.entityType.extra = 0 
+        pdu.alternativeEntityType.entityKind = entity_state["entity_kind"]
+        pdu.alternativeEntityType.domain = entity_state["domain"]
+        pdu.alternativeEntityType.Country = entity_state["country"]
+        pdu.alternativeEntityType.subcategory = entity_state["subcategory"] 
+        pdu.alternativeEntityType.specific = entity_state["specific"] 
+        pdu.alternativeEntityType.extra = 0 
+
 
     memoryStream = BytesIO()
     outputStream = DataOutputStream(memoryStream)
