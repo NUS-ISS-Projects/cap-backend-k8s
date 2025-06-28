@@ -32,7 +32,7 @@ package "Cloud Environment" {
   
   package "DevOps & Monitoring" {
     [Monitoring & Logging\n(Prometheus, Grafana)] as Monitor
-    [CI/CD Pipeline\n(GitHub Actions, Terraform)] as CICD
+    [CI/CD Pipeline\n(GitHub Actions, GKE)] as CICD
   }
 }
 

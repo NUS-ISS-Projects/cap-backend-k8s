@@ -1,0 +1,204 @@
+@startuml
+
+' Styling
+skinparam actorStyle awesome
+skinparam handwritten false
+skinparam roundcorner 20
+skinparam shadowing true
+skinparam defaultFontName "Inter"
+skinparam defaultFontSize 12
+skinparam Linetype ortho
+
+skinparam package {
+  borderColor #A8A8A8
+  backgroundColor #F5F5F5
+  borderThickness 1
+  fontColor #333333
+}
+skinparam node {
+  borderColor #666666
+  backgroundColor #D3D3D3
+  borderThickness 1
+  fontColor #000000
+}
+skinparam component {
+  borderColor #0078D4
+  backgroundColor #E6F3FF
+  borderThickness 1
+  fontColor #003C6B
+}
+skinparam cloud {
+  borderColor #0F9D58
+  backgroundColor #E6F9EE
+  borderThickness 1
+}
+skinparam database {
+  borderColor #DB4437
+  backgroundColor #FCE8E6
+  borderThickness 1
+}
+skinparam artifact {
+  borderColor #4285F4
+  backgroundColor #E8F0FE
+  borderThickness 1
+}
+skinparam service {
+  borderColor #F4B400
+  backgroundColor #FFF8E1
+  borderThickness 1
+}
+skinparam queue {
+  borderColor #795548
+  backgroundColor #EFEBE9
+}
+
+' Actors
+actor "Client / UI" as UI
+actor "DIS PDU Emitter" as DIS_Source
+actor "Developer" as Developer
+
+' External Systems (CI/CD)
+package "External Systems" {
+  node "GitHub Actions\n(CI/CD Pipeline)" as gh_actions
+  node "GitHub Repository\n(Source Code)" as gh_repo
+}
+
+' Google Cloud Platform Environment
+cloud "Google Cloud Platform" as gcp_boundary {
+  package "Google Kubernetes Engine (GKE) Cluster" as gke_cluster {
+    node "GKE Control Plane" as gke_cp {
+      component "API Server"
+      component "Scheduler"
+      component "Controller Manager"
+      note right of gke_cp : Manages cluster, nodes, HPA scaling
+    }
+
+    package "GKE Node Pool\n(Worker Nodes)" as gke_node_pool {
+      
+      node "Deployment: data-ingestion-service" as dep_ingestion {
+        artifact "Pod(s)\n(data-ingestion)" as pod_ingestion
+      }
+      note right of pod_ingestion
+        Image: ghcr.io/.../cap-backend-data-ingestion
+        Handles UDP PDU intake (port 3000)
+        & HTTP health/metrics (port 8080)
+      end note
+      
+      node "Deployment: data-processing-service" as dep_processing {
+        artifact "Pod(s)\n(data-processing)" as pod_processing
+      }
+      note right of pod_processing
+        Image: ghcr.io/.../cap-backend-data-processing
+        Consumes Kafka messages,
+        stores in PostgreSQL
+      end note
+
+      node "Deployment: data-acquisition-service" as dep_acquisition {
+        artifact "Pod(s)\n(data-acquisition)" as pod_acquisition
+      }
+      note right of pod_acquisition
+        Image: ghcr.io/.../cap-backend-data-acquisition
+        Serves historical data & real-time metrics
+      end note
+      
+      node "Deployment: postgres" as dep_postgres {
+        database "Pod\n(postgres-db)" as pod_postgres
+      }
+      note right of pod_postgres
+        Image: postgres:14
+        Relational Database for DIS records
+      end note
+      
+      node "StatefulSet: kafka" as sts_kafka {
+        queue "Pod(s)\n(kafka-broker)" as pod_kafka
+      }
+      note right of pod_kafka
+        Image: confluentinc/cp-kafka
+        Distributed Message Broker
+      end note
+
+      node "StatefulSet: zookeeper" as sts_zookeeper {
+        component "Pod(s)\n(zookeeper)" as pod_zookeeper
+      }
+      note right of pod_zookeeper
+        Image: confluentinc/cp-zookeeper
+        Coordination service for Kafka
+      end note
+    }
+
+    ' Networking: Ingress and Services
+    node "GKE Ingress\n'capstone-ingress'" as ingress {
+      note bottom: Routes external HTTP(S) traffic\n based on paths to services
+    }
+
+    package "Kubernetes Services (Internal & External)" {
+      node "Service (NodePort)\n'data-ingestion-service-udp'" as svc_ingestion_udp_nodeport <<Service>>
+      node "Service (ClusterIP)\n'data-ingestion-service'" as svc_ingestion_clusterip <<Service>>
+      node "Service (ClusterIP)\n'data-processing-service'" as svc_processing_clusterip <<Service>>
+      node "Service (ClusterIP)\n'data-acquisition-service'" as svc_acquisition_clusterip <<Service>>
+      node "Service (ClusterIP)\n'postgres'" as svc_postgres_clusterip <<Service>>
+      node "Service (Headless)\n'kafka'" as svc_kafka_headless <<Service>>
+      node "Service (Headless)\n'zookeeper'" as svc_zookeeper_headless <<Service>>
+    }
+    
+    ' Autoscaling
+    node "HPA 'data-ingestion-hpa'" as hpa_ingestion
+    node "HPA 'data-processing-hpa'" as hpa_processing
+    node "HPA 'data-acquisition-hpa'" as hpa_acquisition
+  }
+}
+
+' --- Relationships ---
+
+' CI/CD Flow
+Developer --> gh_repo : Git Push (Code Changes)
+gh_repo --> gh_actions : Trigger CI/CD Workflow
+gh_actions --> gke_cp : Deploy to GKE (kubectl apply -k)
+
+' External Traffic Flows
+UI -down-> ingress : HTTPS API Calls (e.g., /api/acquisition/*)
+DIS_Source -down-> gke_node_pool : UDP DIS PDUs (to any Node IP:32000)
+gke_node_pool --> svc_ingestion_udp_nodeport : Route NodePort UDP Traffic
+
+' Ingress Routing to Services
+ingress --> svc_acquisition_clusterip : Route /api/acquisition/*
+ingress --> svc_ingestion_clusterip : Route /api/ingestion/* (for health checks)
+ingress --> svc_processing_clusterip : Route /api/processing/* (for health checks)
+
+' Service to Workload (Deployment/StatefulSet which manages Pods)
+svc_ingestion_udp_nodeport --> dep_ingestion
+svc_ingestion_clusterip --> dep_ingestion
+svc_processing_clusterip --> dep_processing
+svc_acquisition_clusterip --> dep_acquisition
+svc_postgres_clusterip --> dep_postgres
+svc_kafka_headless --> sts_kafka
+svc_zookeeper_headless --> sts_zookeeper
+
+' Inter-Service/Pod Communication (Simplified to main data flows)
+pod_ingestion --> svc_kafka_headless : Publish (Raw DIS JSON)
+pod_processing --> svc_kafka_headless : Consume (Raw DIS JSON)
+pod_processing --> svc_postgres_clusterip : Store (Processed Records)
+pod_acquisition --> svc_postgres_clusterip : Query (Historical Records)
+pod_acquisition --> svc_ingestion_clusterip : Request (Real-time Metrics via HTTP)
+
+' Kafka and Zookeeper Interaction
+pod_kafka --> svc_zookeeper_headless : Kafka Coordination
+
+' HPA Management by GKE Control Plane
+gke_cp .up.> hpa_ingestion
+gke_cp .up.> hpa_processing
+gke_cp .up.> hpa_acquisition
+hpa_ingestion .down.> dep_ingestion : Scales
+hpa_processing .down.> dep_processing : Scales
+hpa_acquisition .down.> dep_acquisition : Scales
+
+' GKE Control Plane Manages Node Pool and Workloads
+gke_cp .down.> gke_node_pool : Manages Nodes
+gke_cp .down.> dep_ingestion : Manages Deployment
+gke_cp .down.> dep_processing : Manages Deployment
+gke_cp .down.> dep_acquisition : Manages Deployment
+gke_cp .down.> dep_postgres : Manages Deployment
+gke_cp .down.> sts_kafka : Manages StatefulSet
+gke_cp .down.> sts_zookeeper : Manages StatefulSet
+
+@enduml

@@ -1,0 +1,58 @@
+@startuml
+title Domain-Driven Design Overview
+
+skinparam componentStyle uml2
+skinparam Linetype ortho
+skinparam actorStyle awesome
+
+package "Ingestion Bounded Context" <<BC>> {
+  actor "DIS PDU Emitter" as Emitter
+  [UdpListenerService] <<Application>>
+  [DisMetricsTracker] <<Domain Service>>
+  [RealTimeMetrics] <<Aggregate>>
+}
+
+package "Messaging Bounded Context" <<BC>> {
+  queue "dis-pdus" as KafkaTopic
+}
+
+package "Processing Bounded Context" <<BC>> {
+  [PduProcessingService] <<Application>>
+  [PduParserFactory] <<Factory>>
+  interface PduParser <<Strategy>>
+  [EntityStatePduParser]
+  [FirePduParser]
+}
+
+package "Persistence Bounded Context" <<BC>> {
+  database "PostgreSQL" as DisDb
+  [EntityStateRecord] <<Aggregate Root>>
+  [FireEventRecord] <<Aggregate Root>>
+}
+
+package "Acquisition Bounded Context" <<BC>> {
+  actor "Client / UI" as UI
+  [HistoricalDataController] <<API Endpoint>>
+  [MetricsService] <<Domain Service>>
+  [AggregatedMetricsOverview] <<Aggregate>>
+}
+
+
+' --- Relationships ---
+Emitter --> UdpListenerService
+UdpListenerService --> DisMetricsTracker
+UdpListenerService --> KafkaTopic
+DisMetricsTracker --> RealTimeMetrics
+
+PduProcessingService <-- KafkaTopic
+PduProcessingService --> PduParserFactory
+PduParserFactory ..> PduParser
+EntityStatePduParser .up.|> PduParser
+FirePduParser .up.|> PduParser
+PduParser --> DisDb
+
+MetricsService --> DisDb
+HistoricalDataController --> MetricsService
+UI --> HistoricalDataController
+HistoricalDataController --> DisMetricsTracker
+@enduml
