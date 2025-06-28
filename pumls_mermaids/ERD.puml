@@ -1,0 +1,43 @@
+@startuml
+' hide the spot
+hide circle
+
+' avoid problems with angled crows feet
+skinparam linetype ortho
+
+entity "entity_state_record" as ESR {
+  * **id**: Long <<generated>>
+  --
+  * **site**: int
+  * **application**: int
+  * **entity**: int
+  --
+  + locationX: double
+  + locationY: double
+  + locationZ: double
+  * timestamp: long
+}
+
+entity "fire_event_record" as FER {
+  * **id**: Long <<generated>>
+  --
+  * firing_site: int
+  * firing_application: int
+  * firing_entity: int
+  --
+  * target_site: int
+  * target_application: int
+  * target_entity: int
+  --
+  * munition_site: int
+  * munition_application: int
+  * munition_entity: int
+  * timestamp: long
+}
+
+' Logical relationship where the combination of (site, application, entity) in ESR
+' can be linked to (firing_site, firing_application, firing_entity) in FER
+' or (target_site, target_application, target_entity) in FER.
+ESR ||..o{ FER : "logically related to"
+
+@enduml

@@ -1,0 +1,119 @@
+@startuml
+!theme plain
+skinparam actorStyle awesome
+skinparam roundcorner 20
+skinparam shadowing true
+skinparam defaultFontName "Inter"
+skinparam defaultFontSize 13
+skinparam Linetype ortho
+
+' Define specific component styles based on your project's stack
+skinparam package {
+  borderColor #A8A8A8
+  backgroundColor #F5F5F5
+}
+skinparam component {
+  borderColor #0078D4
+  backgroundColor #E6F3FF
+  fontColor #003C6B
+}
+skinparam cloud {
+  borderColor #0F9D58
+  backgroundColor #E6F9EE
+}
+skinparam database {
+  borderColor #DB4437
+  backgroundColor #FCE8E6
+}
+skinparam queue {
+  borderColor #795548
+  backgroundColor #EFEBE9
+}
+skinparam node {
+  borderColor #666666
+  backgroundColor #D3D3D3
+}
+
+' Actors
+actor "Client / UI" as UI
+actor "DIS PDU Emitter\n(sendPdu.py)" as DIS_Source
+actor "Developer" as Developer
+
+' External Systems (CI/CD)
+package "External Systems" {
+  node "GitHub Actions\n(CD.yaml)" as gh_actions
+  node "GitHub Repository" as gh_repo
+}
+
+' Main System Boundary
+cloud "Google Cloud Platform" {
+  package "Google Kubernetes Engine (GKE) Cluster" as gke_cluster {
+
+    ' Ingress is the main entry point for HTTP traffic
+    node "GKE Ingress\n'capstone-ingress'" as ingress
+
+    ' Define the core microservices (Deployments)
+    package "Microservices" {
+      component "data-ingestion-service" as ingestion {
+        note bottom
+          Receives UDP PDUs.
+          Publishes JSON to Kafka.
+          Exposes /internal/metrics/realtime.
+        end note
+      }
+      component "data-processing-service" as processing {
+        note bottom
+          Consumes from Kafka.
+          Parses JSON PDUs.
+          Saves to PostgreSQL.
+        end note
+      }
+      component "data-acquisition-service" as acquisition {
+        note bottom
+          Serves historical & aggregated data from DB.
+          Fetches real-time metrics from Ingestion Svc.
+        end note
+      }
+    }
+
+    ' Define the backend stateful services
+    package "Backend Services" {
+      queue "Kafka StatefulSet\n(Topic: dis-pdus)" as kafka
+      database "PostgreSQL Deployment\n(DB: dis_db)" as postgres
+      component "Zookeeper StatefulSet" as zookeeper
+    }
+  }
+}
+
+' --- Relationships ---
+
+' --- CI/CD Flow ---
+Developer -> gh_repo : Git Push
+gh_repo -> gh_actions : Trigger on tag (e.g., *-release)
+gh_actions ..> gke_cluster : kustomize build | kubectl apply
+
+' --- External User Data Flow ---
+UI -> ingress : "\n\nHTTPS REST Calls\n(/api/acquisition/*)"
+
+' --- UDP Ingestion Flow ---
+DIS_Source -> ingestion : "DIS PDUs via UDP\n(to GKE NodePort 32000 -> Port 3000)"
+
+' --- Ingress Routing ---
+ingress --> acquisition : "/api/acquisition/*"
+ingress --> ingestion : /api/ingestion/health
+ingress --> processing : /api/processing/health
+
+' --- Internal Data Pipeline ---
+ingestion -> kafka : "Publish (PDU as JSON)"
+processing <- kafka : "Consume (PDU as JSON)"
+processing -> postgres : "Store (EntityStateRecord, FireEventRecord)"
+acquisition -> postgres : "Query (Historical Data)"
+
+' --- Internal Service-to-Service Communication ---
+' This is the key interaction that was missing from the original diagrams.
+acquisition --> ingestion : "HTTP GET /internal/metrics/realtime"
+
+' --- Backend Service Coordination ---
+kafka -> zookeeper
+
+@enduml
