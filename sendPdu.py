@@ -13,7 +13,7 @@ import time
 import random
 from io import BytesIO
 from opendis.DataOutputStream import DataOutputStream
-from opendis.dis7 import EntityStatePdu, FirePdu, CollisionPdu, DataPdu, EntityID as DisEntityID
+from opendis.dis7 import EntityStatePdu, DeadReckoningParameters, FirePdu, CollisionPdu, EntityID as DisEntityID
 from opendis.RangeCoordinates import GPS, deg2rad
 
 # --- Simulation Configuration ---
@@ -105,61 +105,56 @@ def update_entity_position(entity, dt): #
         entity["location_z"] = max(WORLD_BOUNDS_ECEF['z_min'], min(entity["location_z"], WORLD_BOUNDS_ECEF['z_max']))
 
 def send_entity_state_pdu(entity_state):
-    pdu = EntityStatePdu()
-    pdu.protocolVersion = 7 #entity_state["protocol_version"]
-    pdu.exerciseID = DEFAULT_EXERCISE_ID
-    pdu.pduType = 1
-    pdu.timestamp = get_current_dis_timestamp() # MODIFIED
-    pdu.pduStatus = 0
-    # ... (rest of the fields set as before) ...
-    pdu.entityID.siteID = entity_state["id_obj"].siteID 
-    pdu.entityID.applicationID = entity_state["id_obj"].applicationID 
-    pdu.entityID.entityID = entity_state["id_obj"].entityID 
-    pdu.forceID = entity_state["force_id"] 
-    pdu.numberOfArticulationParameters = 2
-    pdu.marking.setString(entity_state["marking"]) 
-    pdu.entityAppearance = 0
-    pdu.capabilities = 0
-    pdu.entityLinearVelocity.x = entity_state["velocity_x"]
-    pdu.entityLinearVelocity.y = entity_state["velocity_y"]
-    pdu.entityLinearVelocity.z = entity_state["velocity_z"]
-    pdu.entityLocation.x = entity_state["location_x"] 
-    pdu.entityLocation.y = entity_state["location_y"] 
-    pdu.entityLocation.z = entity_state["location_z"] 
-    pdu.entityOrientation.psi = entity_state["orientation_psi"] 
-    pdu.entityOrientation.theta = entity_state["orientation_theta"] 
-    pdu.entityOrientation.phi = entity_state["orientation_phi"] 
-    pdu.deadReckoningParameters.algo = 4
-    pdu.deadReckoningParameters.otherParam = 0
-    pdu.deadReckoningParameters.entityLinearAcceleration.x = entity_state["velocity_x"]
-    pdu.deadReckoningParameters.entityLinearAcceleration.y = entity_state["velocity_y"]
-    pdu.deadReckoningParameters.entityLinearAcceleration.z = entity_state["velocity_z"]
-    pdu.deadReckoningParameters.entityAngularVelocity.x = entity_state["velocity_x"]
-    pdu.deadReckoningParameters.entityAngularVelocity.y = entity_state["velocity_y"]
-    pdu.deadReckoningParameters.entityAngularVelocity.z = entity_state["velocity_z"]
+    try:
+        pdu = EntityStatePdu()
+        pdu.protocolVersion = entity_state["protocol_version"]
+        pdu.exerciseID = DEFAULT_EXERCISE_ID
+        pdu.pduType = 1
+        pdu.timestamp = get_current_dis_timestamp()
+        pdu.pduStatus = 0
+        pdu.entityAppearance = 0
+        pdu.capabilities = 0
 
-    if pdu.protocolVersion == 7:
-        pdu.entityType.entityKind = entity_state["entity_kind"] 
-        pdu.entityType.domain = entity_state["domain"] 
-        pdu.entityType.country = entity_state["country"] 
-        pdu.entityType.category = entity_state["category"] 
-        pdu.entityType.subcategory = entity_state["subcategory"] 
-        pdu.entityType.specific = entity_state["specific"] 
-        pdu.entityType.extra = 0 
-        pdu.alternativeEntityType.entityKind = entity_state["entity_kind"]
-        pdu.alternativeEntityType.domain = entity_state["domain"]
-        pdu.alternativeEntityType.Country = entity_state["country"]
-        pdu.alternativeEntityType.subcategory = entity_state["subcategory"] 
-        pdu.alternativeEntityType.specific = entity_state["specific"] 
-        pdu.alternativeEntityType.extra = 0 
+        # Set Entity ID
+        eid = entity_state["id_obj"]
+        pdu.entityID.siteID = eid.siteID
+        pdu.entityID.applicationID = eid.applicationID
+        pdu.entityID.entityID = eid.entityID
+
+        # Set marking (must be 11 characters max)
+        pdu.marking.setString(entity_state["marking"].ljust(11)[:11])
+
+        # Location & orientation
+        pdu.entityLocation.x = entity_state["location_x"]
+        pdu.entityLocation.y = entity_state["location_y"]
+        pdu.entityLocation.z = entity_state["location_z"]
+        pdu.entityOrientation.psi = entity_state["orientation_psi"]
+        pdu.entityOrientation.theta = entity_state["orientation_theta"]
+        pdu.entityOrientation.phi = entity_state["orientation_phi"]
 
 
-    memoryStream = BytesIO()
-    outputStream = DataOutputStream(memoryStream)
-    pdu.serialize(outputStream) # This line caused the error
-    data = memoryStream.getvalue()
-    udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
-    entity_state["last_espdu_sent_time"] = time.time()
+        if pdu.protocolVersion == 7:
+            pdu.forceId = entity_state["force_id"]
+            pdu.entityType.entityKind = entity_state["entity_kind"]
+            pdu.entityType.domain = entity_state["domain"]
+            pdu.entityType.country = entity_state["country"]
+            pdu.entityType.category = entity_state["category"]
+            pdu.entityType.subcategory = entity_state["subcategory"]
+            pdu.entityType.specific = entity_state["specific"]
+            pdu.entityType.extra = 0
+
+        # Serialize and send
+        memoryStream = BytesIO()
+        outputStream = DataOutputStream(memoryStream)
+        pdu.serialize(outputStream)
+        data = memoryStream.getvalue()
+        udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
+
+        entity_state["last_espdu_sent_time"] = time.time()
+
+        print(f"Sent EntityStatePdu for {entity_state['marking']} ({eid.siteID}, {eid.applicationID}, {eid.entityID}), {len(data)} bytes.")
+    except Exception as ex:
+        print(f"Error sending EntityStatePdu: {ex}")
 
 def send_fire_pdu(firing_entity, target_entity):
     if not firing_entity or not target_entity: return
