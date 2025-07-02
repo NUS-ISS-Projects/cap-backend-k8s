@@ -11,9 +11,14 @@ Ensure that the opendis package is installed and properly configured.
 import socket
 import time
 import random
+import opendis.dis7 as dis7
 from io import BytesIO
 from opendis.DataOutputStream import DataOutputStream
-from opendis.dis7 import EntityStatePdu, DeadReckoningParameters, FirePdu, CollisionPdu, EntityID as DisEntityID
+from opendis.dis7 import (
+    EntityID,EntityStatePdu, CollisionPdu, FirePdu, DetonationPdu, DataPdu,
+    ActionRequestPdu, StartResumePdu, SetDataPdu, DesignatorPdu,
+    ElectromagneticEmissionsPdu,ClockTime
+)
 from opendis.RangeCoordinates import GPS, deg2rad
 
 # --- Simulation Configuration ---
@@ -54,7 +59,7 @@ def get_current_dis_timestamp():
 
 # Helper to create DIS EntityID object (remains the same)
 def create_entity_id(site, app, entity_val):
-    eid = DisEntityID()
+    eid = EntityID()
     eid.siteID = site
     eid.applicationID = app
     eid.entityID = entity_val
@@ -182,7 +187,6 @@ def send_fire_pdu(firing_entity, target_entity):
     udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
     print(f"Sent FirePdu from {firing_entity['marking']} to {target_entity['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
 
-
 def send_collision_pdu(issuing_entity, colliding_entity):
     if not issuing_entity or not colliding_entity: return
     pdu = CollisionPdu()
@@ -206,8 +210,222 @@ def send_collision_pdu(issuing_entity, colliding_entity):
     udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
     print(f"Sent CollisionPdu between {issuing_entity['marking']} and {colliding_entity['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
 
+def send_detonation_pdu(firing_entity, target_entity):
+    if not firing_entity or not target_entity:
+        return
+
+    pdu = DetonationPdu()
+    pdu.protocolVersion = 7
+    pdu.exerciseID = DEFAULT_EXERCISE_ID
+    pdu.pduType = 3
+    pdu.timestamp = get_current_dis_timestamp()
+    pdu.pduStatus = 0
+
+    # Entity IDs
+    pdu.firingEntityID.siteID = firing_entity["id_obj"].siteID
+    pdu.firingEntityID.applicationID = firing_entity["id_obj"].applicationID
+    pdu.firingEntityID.entityID = firing_entity["id_obj"].entityID
+
+    pdu.targetEntityID.siteID = target_entity["id_obj"].siteID
+    pdu.targetEntityID.applicationID = target_entity["id_obj"].applicationID
+    pdu.targetEntityID.entityID = target_entity["id_obj"].entityID
+
+    pdu.locationInEntityCoordinates.x = 1000.0
+    pdu.locationInEntityCoordinates.y = 2000.0
+    pdu.locationInEntityCoordinates.z = 0.0
+
+    pdu.velocity.x = 0.0
+    pdu.velocity.y = 0.0
+    pdu.velocity.z = 0.0
+
+    memoryStream = BytesIO()
+    outputStream = DataOutputStream(memoryStream)
+    pdu.serialize(outputStream)
+    data = memoryStream.getvalue()
+    udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
+
+    print(f"Sent DetonationPdu from {firing_entity['marking']} to {target_entity['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
+
+def send_data_pdu(originatingEntityID, receivingEntityID):
+    if not originatingEntityID or not receivingEntityID:
+        return
+    pdu = DataPdu()
+    pdu.protocolVersion = 7
+    pdu.exerciseID = DEFAULT_EXERCISE_ID
+    pdu.pduType = 13
+    pdu.pduStatus = 0 
+    pdu.timestamp = get_current_dis_timestamp()
+    pdu.pduStatus = 0
+
+    # Entity IDs
+    pdu.originatingEntityID.siteID = originatingEntityID["id_obj"].siteID
+    pdu.originatingEntityID.applicationID = originatingEntityID["id_obj"].applicationID
+    pdu.originatingEntityID.entityID = originatingEntityID["id_obj"].entityID
+
+    pdu.receivingEntityID.siteID = receivingEntityID["id_obj"].siteID
+    pdu.receivingEntityID.applicationID = receivingEntityID["id_obj"].applicationID
+    pdu.receivingEntityID.entityID = receivingEntityID["id_obj"].entityID
+
+    pdu.dataValues = b"HelloDIS"
+
+    memoryStream = BytesIO()
+    outputStream = DataOutputStream(memoryStream)
+    pdu.serialize(outputStream)
+    data = memoryStream.getvalue()
+    udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
+
+    print(f"Sent DataPdu from {originatingEntityID['marking']} to {receivingEntityID['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
+
+# 6. ActionRequestPdu
+def action_request_pdu(originatingEntityID, receivingEntityID):
+    if not originatingEntityID or not receivingEntityID:
+        return
+
+    pdu = ActionRequestPdu()
+    pdu.protocolVersion = 7
+    pdu.exerciseID = DEFAULT_EXERCISE_ID
+    pdu.pduType = 16
+    pdu.timestamp = get_current_dis_timestamp()
+    pdu.pduStatus = 0
+
+    # Entity IDs
+    pdu.originatingEntityID.siteID = originatingEntityID["id_obj"].siteID
+    pdu.originatingEntityID.applicationID = originatingEntityID["id_obj"].applicationID
+    pdu.originatingEntityID.entityID = originatingEntityID["id_obj"].entityID
+
+    pdu.receivingEntityID.siteID = receivingEntityID["id_obj"].siteID
+    pdu.receivingEntityID.applicationID = receivingEntityID["id_obj"].applicationID
+    pdu.receivingEntityID.entityID = receivingEntityID["id_obj"].entityID
+
+    memoryStream = BytesIO()
+    outputStream = DataOutputStream(memoryStream)
+    pdu.serialize(outputStream)
+    data = memoryStream.getvalue()
+    udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
+
+    print(f"Sent ActionRequestPdu from {originatingEntityID['marking']} to {receivingEntityID['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
+
+# 7. StartResumePdu
+def send_start_resume_pdu():
+    pdu = StartResumePdu()
+    pdu.protocolVersion = 7
+    pdu.exerciseID = DEFAULT_EXERCISE_ID
+    pdu.pduType = 13  # Confirmed for DIS7
+    pdu.timestamp = get_current_dis_timestamp()
+    # pdu.realWorldTime = int(time.time())
+    pdu.realWorldTime = ClockTime()
+    pdu.realWorldTime.time = int(time.time())
+    pdu.realWorldTime.fraction = 0  
+    pdu.pduStatus = 0
+
+    memoryStream = BytesIO()
+    outputStream = DataOutputStream(memoryStream)
+    pdu.serialize(outputStream)
+    data = memoryStream.getvalue()
+    udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
+    print(f"Sent StartResumePdu (TS: {pdu.timestamp}). {len(data)} bytes.")
+
+# 8. SetDataPdu
+def send_set_data_pdu(entity):
+    pdu = SetDataPdu()
+    pdu.protocolVersion = 7
+    pdu.exerciseID = DEFAULT_EXERCISE_ID
+    pdu.pduType = 17
+    pdu.timestamp = get_current_dis_timestamp()
+    pdu.originatingEntityID = entity["id_obj"]
+    pdu.dataValues = b"SetDataExample"
+    pdu.pduStatus = 0
+
+    memoryStream = BytesIO()
+    outputStream = DataOutputStream(memoryStream)
+    pdu.serialize(outputStream)
+    data = memoryStream.getvalue()
+    udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
+    print(f"Sent SetDataPdu from {entity['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
+
+# 9. DesignatorPdu
+def send_designator_pdu(entity):
+    pdu = DesignatorPdu()
+    pdu.protocolVersion = 7
+    pdu.exerciseID = DEFAULT_EXERCISE_ID
+    pdu.pduType = 19
+    pdu.timestamp = get_current_dis_timestamp()
+    pdu.designatingEntityID = entity["id_obj"]
+    pdu.pduStatus = 0
+
+    memoryStream = BytesIO()
+    outputStream = DataOutputStream(memoryStream)
+    pdu.serialize(outputStream)
+    data = memoryStream.getvalue()
+    udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
+    print(f"Sent DesignatorPdu from {entity['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
+
+# 10. ElectromagneticEmissionsPdu
+def send_emission_pdu(entity):
+    pdu = ElectromagneticEmissionsPdu()
+    pdu.protocolVersion = 7
+    pdu.exerciseID = DEFAULT_EXERCISE_ID
+    pdu.pduType = 25
+    pdu.timestamp = get_current_dis_timestamp()
+    pdu.emittingEntityID = entity["id_obj"]
+    pdu.pduStatus = 0
+
+    memoryStream = BytesIO()
+    outputStream = DataOutputStream(memoryStream)
+    pdu.serialize(outputStream)
+    data = memoryStream.getvalue()
+    udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
+    print(f"Sent ElectromagneticEmissionsPdu from {entity['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
+
 # Main function (remains the same structure as the previous realistic version)
-def main(): #
+# def main(): #
+#     initialize_entities()
+#     start_time = time.time()
+#     last_update_time = start_time
+#     total_pdus_sent = 0
+#     espdu_send_interval = 1.0 / PDUS_PER_SECOND_PER_ENTITY if PDUS_PER_SECOND_PER_ENTITY > 0 else float('inf')
+
+#     print(f"Starting DIS PDU simulation for {SIMULATION_DURATION_SECONDS} seconds.")
+#     print(f"Simulating {NUM_SIMULATED_ENTITIES} entities.")
+#     print(f"Targeting {DESTINATION_ADDRESS}:{UDP_PORT}")
+
+#     try:
+#         while time.time() - start_time < SIMULATION_DURATION_SECONDS:
+#             current_time = time.time()
+#             dt = current_time - last_update_time
+#             if dt <= 0: 
+#                 dt = 0.01 
+#             last_update_time = current_time
+
+#             if not simulated_entities: break
+
+#             for entity in simulated_entities:
+#                 update_entity_position(entity, dt)
+#                 if current_time - entity.get("last_espdu_sent_time", 0) >= espdu_send_interval:
+#                     send_entity_state_pdu(entity)
+#                     total_pdus_sent +=1
+#                 if random.random() < FIRE_EVENT_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
+#                     possible_targets = [e for e in simulated_entities if e["id_obj"].entityID != entity["id_obj"].entityID]
+#                     if possible_targets:
+#                         target_entity = random.choice(possible_targets)
+#                         send_fire_pdu(entity, target_entity)
+#                         total_pdus_sent +=1
+#                 if random.random() < COLLISION_EVENT_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0) :
+#                     possible_collision_partners = [e for e in simulated_entities if e["id_obj"].entityID != entity["id_obj"].entityID]
+#                     if possible_collision_partners:
+#                         colliding_entity = random.choice(possible_collision_partners)
+#                         send_collision_pdu(entity, colliding_entity)
+#                         total_pdus_sent +=1
+            
+#             time.sleep(max(0.01, espdu_send_interval / (NUM_SIMULATED_ENTITIES if NUM_SIMULATED_ENTITIES > 0 else 1) / 10.0))
+#     except KeyboardInterrupt:
+#         print("\nSimulation stopped by user.")
+#     finally:
+#         print(f"Simulation finished. Total time: {time.time() - start_time:.2f} seconds.")
+#         print(f"Total PDUs sent: {total_pdus_sent}")
+#         udpSocket.close()
+
+def main():
     initialize_entities()
     start_time = time.time()
     last_update_time = start_time
@@ -222,31 +440,59 @@ def main(): #
         while time.time() - start_time < SIMULATION_DURATION_SECONDS:
             current_time = time.time()
             dt = current_time - last_update_time
-            if dt <= 0: 
-                dt = 0.01 
+            if dt <= 0:
+                dt = 0.01
             last_update_time = current_time
 
-            if not simulated_entities: break
+            if not simulated_entities:
+                break
 
             for entity in simulated_entities:
                 update_entity_position(entity, dt)
+
                 if current_time - entity.get("last_espdu_sent_time", 0) >= espdu_send_interval:
                     send_entity_state_pdu(entity)
-                    total_pdus_sent +=1
+                    total_pdus_sent += 1
+
                 if random.random() < FIRE_EVENT_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
                     possible_targets = [e for e in simulated_entities if e["id_obj"].entityID != entity["id_obj"].entityID]
                     if possible_targets:
                         target_entity = random.choice(possible_targets)
                         send_fire_pdu(entity, target_entity)
-                        total_pdus_sent +=1
-                if random.random() < COLLISION_EVENT_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0) :
-                    possible_collision_partners = [e for e in simulated_entities if e["id_obj"].entityID != entity["id_obj"].entityID]
-                    if possible_collision_partners:
-                        colliding_entity = random.choice(possible_collision_partners)
+                        send_detonation_pdu(entity, target_entity)
+                        total_pdus_sent += 2
+
+                if random.random() < COLLISION_EVENT_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
+                    possible_collisions = [e for e in simulated_entities if e["id_obj"].entityID != entity["id_obj"].entityID]
+                    if possible_collisions:
+                        colliding_entity = random.choice(possible_collisions)
                         send_collision_pdu(entity, colliding_entity)
-                        total_pdus_sent +=1
-            
+                        total_pdus_sent += 1
+
+                # Periodically send one of each additional PDU type (low frequency)
+                if random.random() < 0.01:
+                    target = random.choice(simulated_entities)
+                    send_data_pdu(entity, target)
+                    total_pdus_sent += 1
+                if random.random() < 0.005:
+                    target = random.choice(simulated_entities)
+                    action_request_pdu(entity, target)
+                    total_pdus_sent += 1
+                if random.random() < 0.002:
+                    send_start_resume_pdu()
+                    total_pdus_sent += 1
+                if random.random() < 0.005:
+                    send_set_data_pdu(entity)
+                    total_pdus_sent += 1
+                if random.random() < 0.005:
+                    send_designator_pdu(entity)
+                    total_pdus_sent += 1
+                if random.random() < 0.005:
+                    send_emission_pdu(entity)
+                    total_pdus_sent += 1
+
             time.sleep(max(0.01, espdu_send_interval / (NUM_SIMULATED_ENTITIES if NUM_SIMULATED_ENTITIES > 0 else 1) / 10.0))
+
     except KeyboardInterrupt:
         print("\nSimulation stopped by user.")
     finally:
