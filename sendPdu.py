@@ -109,6 +109,7 @@ def update_entity_position(entity, dt): #
         entity["velocity_z"] *= -1
         entity["location_z"] = max(WORLD_BOUNDS_ECEF['z_min'], min(entity["location_z"], WORLD_BOUNDS_ECEF['z_max']))
 
+#1. EntityStatePdu
 def send_entity_state_pdu(entity_state):
     try:
         pdu = EntityStatePdu()
@@ -161,6 +162,7 @@ def send_entity_state_pdu(entity_state):
     except Exception as ex:
         print(f"Error sending EntityStatePdu: {ex}")
 
+# 2. Firepdu
 def send_fire_pdu(firing_entity, target_entity):
     if not firing_entity or not target_entity: return
     pdu = FirePdu()
@@ -187,6 +189,7 @@ def send_fire_pdu(firing_entity, target_entity):
     udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
     print(f"Sent FirePdu from {firing_entity['marking']} to {target_entity['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
 
+# 3. CollisionPdu
 def send_collision_pdu(issuing_entity, colliding_entity):
     if not issuing_entity or not colliding_entity: return
     pdu = CollisionPdu()
@@ -210,6 +213,7 @@ def send_collision_pdu(issuing_entity, colliding_entity):
     udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
     print(f"Sent CollisionPdu between {issuing_entity['marking']} and {colliding_entity['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
 
+# 4. DetonationPdu
 def send_detonation_pdu(firing_entity, target_entity):
     if not firing_entity or not target_entity:
         return
@@ -246,6 +250,7 @@ def send_detonation_pdu(firing_entity, target_entity):
 
     print(f"Sent DetonationPdu from {firing_entity['marking']} to {target_entity['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
 
+# 5. DataPdu
 def send_data_pdu(originatingEntityID, receivingEntityID):
     if not originatingEntityID or not receivingEntityID:
         return
@@ -377,53 +382,6 @@ def send_emission_pdu(entity):
     udpSocket.sendto(data, (DESTINATION_ADDRESS, UDP_PORT))
     print(f"Sent ElectromagneticEmissionsPdu from {entity['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
 
-# Main function (remains the same structure as the previous realistic version)
-# def main(): #
-#     initialize_entities()
-#     start_time = time.time()
-#     last_update_time = start_time
-#     total_pdus_sent = 0
-#     espdu_send_interval = 1.0 / PDUS_PER_SECOND_PER_ENTITY if PDUS_PER_SECOND_PER_ENTITY > 0 else float('inf')
-
-#     print(f"Starting DIS PDU simulation for {SIMULATION_DURATION_SECONDS} seconds.")
-#     print(f"Simulating {NUM_SIMULATED_ENTITIES} entities.")
-#     print(f"Targeting {DESTINATION_ADDRESS}:{UDP_PORT}")
-
-#     try:
-#         while time.time() - start_time < SIMULATION_DURATION_SECONDS:
-#             current_time = time.time()
-#             dt = current_time - last_update_time
-#             if dt <= 0: 
-#                 dt = 0.01 
-#             last_update_time = current_time
-
-#             if not simulated_entities: break
-
-#             for entity in simulated_entities:
-#                 update_entity_position(entity, dt)
-#                 if current_time - entity.get("last_espdu_sent_time", 0) >= espdu_send_interval:
-#                     send_entity_state_pdu(entity)
-#                     total_pdus_sent +=1
-#                 if random.random() < FIRE_EVENT_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
-#                     possible_targets = [e for e in simulated_entities if e["id_obj"].entityID != entity["id_obj"].entityID]
-#                     if possible_targets:
-#                         target_entity = random.choice(possible_targets)
-#                         send_fire_pdu(entity, target_entity)
-#                         total_pdus_sent +=1
-#                 if random.random() < COLLISION_EVENT_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0) :
-#                     possible_collision_partners = [e for e in simulated_entities if e["id_obj"].entityID != entity["id_obj"].entityID]
-#                     if possible_collision_partners:
-#                         colliding_entity = random.choice(possible_collision_partners)
-#                         send_collision_pdu(entity, colliding_entity)
-#                         total_pdus_sent +=1
-            
-#             time.sleep(max(0.01, espdu_send_interval / (NUM_SIMULATED_ENTITIES if NUM_SIMULATED_ENTITIES > 0 else 1) / 10.0))
-#     except KeyboardInterrupt:
-#         print("\nSimulation stopped by user.")
-#     finally:
-#         print(f"Simulation finished. Total time: {time.time() - start_time:.2f} seconds.")
-#         print(f"Total PDUs sent: {total_pdus_sent}")
-#         udpSocket.close()
 
 def main():
     initialize_entities()
