@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-processing-service
+spec:
+  template:
+    spec:
+      imagePullSecrets: []
+      containers:
+      - name: data-processing-service
+        image: cap-backend-data-processing:latest
+        imagePullPolicy: Never

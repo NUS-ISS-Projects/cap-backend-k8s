@@ -23,13 +23,27 @@ from opendis.RangeCoordinates import GPS, deg2rad
 
 # --- Simulation Configuration ---
 UDP_PORT = 32000
-DESTINATION_ADDRESS = "34.142.175.247"  # Replace with `minikube ip` or target GKE Node IP
+# Use environment variable for destination if set, otherwise default to GKE IP
+DESTINATION_ADDRESS = "34.142.175.247"  # Default GKE IP
+
+# Uncomment and set this for local Minikube testing
+# DESTINATION_ADDRESS = "192.168.49.2"  # Replace with the output of `minikube ip`
 
 SIMULATION_DURATION_SECONDS = 9999
 PDUS_PER_SECOND_PER_ENTITY = 2
 NUM_SIMULATED_ENTITIES = 5
-FIRE_EVENT_PROBABILITY = 0.02
-COLLISION_EVENT_PROBABILITY = 0.005
+
+# Equal probability distribution for all PDU types
+FIRE_EVENT_PROBABILITY = 0.01
+DETONATION_PDU_PROBABILITY = 0.01
+COLLISION_EVENT_PROBABILITY = 0.01
+DATA_PDU_PROBABILITY = 0.01
+ACTION_REQUEST_PDU_PROBABILITY = 0.01
+START_RESUME_PDU_PROBABILITY = 0.01
+SET_DATA_PDU_PROBABILITY = 0.01
+DESIGNATOR_PDU_PROBABILITY = 0.01
+EMISSION_PDU_PROBABILITY = 0.01
+
 DEFAULT_SITE_ID = 18
 DEFAULT_APPLICATION_ID = 23
 DEFAULT_EXERCISE_ID = 1
@@ -257,7 +271,7 @@ def send_data_pdu(originatingEntityID, receivingEntityID):
     pdu = DataPdu()
     pdu.protocolVersion = 7
     pdu.exerciseID = DEFAULT_EXERCISE_ID
-    pdu.pduType = 13
+    pdu.pduType = 20  # Corrected PDU type for DataPdu
     pdu.pduStatus = 0 
     pdu.timestamp = get_current_dis_timestamp()
     pdu.pduStatus = 0
@@ -282,14 +296,14 @@ def send_data_pdu(originatingEntityID, receivingEntityID):
     print(f"Sent DataPdu from {originatingEntityID['marking']} to {receivingEntityID['marking']} (TS: {pdu.timestamp}). {len(data)} bytes.")
 
 # 6. ActionRequestPdu
-def action_request_pdu(originatingEntityID, receivingEntityID):
+def send_action_request_pdu(originatingEntityID, receivingEntityID):
     if not originatingEntityID or not receivingEntityID:
         return
 
     pdu = ActionRequestPdu()
     pdu.protocolVersion = 7
     pdu.exerciseID = DEFAULT_EXERCISE_ID
-    pdu.pduType = 16
+    pdu.pduType = 16  # Correct PDU type for ActionRequestPdu
     pdu.timestamp = get_current_dis_timestamp()
     pdu.pduStatus = 0
 
@@ -315,7 +329,7 @@ def send_start_resume_pdu():
     pdu = StartResumePdu()
     pdu.protocolVersion = 7
     pdu.exerciseID = DEFAULT_EXERCISE_ID
-    pdu.pduType = 13  # Confirmed for DIS7
+    pdu.pduType = 13  # Correct PDU type for StartResumePdu
     pdu.timestamp = get_current_dis_timestamp()
     # pdu.realWorldTime = int(time.time())
     pdu.realWorldTime = ClockTime()
@@ -335,7 +349,7 @@ def send_set_data_pdu(entity):
     pdu = SetDataPdu()
     pdu.protocolVersion = 7
     pdu.exerciseID = DEFAULT_EXERCISE_ID
-    pdu.pduType = 17
+    pdu.pduType = 19  # Corrected PDU type for SetDataPdu
     pdu.timestamp = get_current_dis_timestamp()
     pdu.originatingEntityID = entity["id_obj"]
     pdu.dataValues = b"SetDataExample"
@@ -353,7 +367,7 @@ def send_designator_pdu(entity):
     pdu = DesignatorPdu()
     pdu.protocolVersion = 7
     pdu.exerciseID = DEFAULT_EXERCISE_ID
-    pdu.pduType = 19
+    pdu.pduType = 24  # Corrected PDU type for DesignatorPdu
     pdu.timestamp = get_current_dis_timestamp()
     pdu.designatingEntityID = entity["id_obj"]
     pdu.pduStatus = 0
@@ -370,7 +384,7 @@ def send_emission_pdu(entity):
     pdu = ElectromagneticEmissionsPdu()
     pdu.protocolVersion = 7
     pdu.exerciseID = DEFAULT_EXERCISE_ID
-    pdu.pduType = 25
+    pdu.pduType = 23  # Corrected PDU type for ElectromagneticEmissionsPdu
     pdu.timestamp = get_current_dis_timestamp()
     pdu.emittingEntityID = entity["id_obj"]
     pdu.pduStatus = 0
@@ -412,14 +426,23 @@ def main():
                     send_entity_state_pdu(entity)
                     total_pdus_sent += 1
 
+                # Fire PDU - equally distributed with other PDU types
                 if random.random() < FIRE_EVENT_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
                     possible_targets = [e for e in simulated_entities if e["id_obj"].entityID != entity["id_obj"].entityID]
                     if possible_targets:
                         target_entity = random.choice(possible_targets)
                         send_fire_pdu(entity, target_entity)
+                        total_pdus_sent += 1
+                
+                # Detonation PDU - now independent from Fire PDU
+                if random.random() < DETONATION_PDU_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
+                    possible_targets = [e for e in simulated_entities if e["id_obj"].entityID != entity["id_obj"].entityID]
+                    if possible_targets:
+                        target_entity = random.choice(possible_targets)
                         send_detonation_pdu(entity, target_entity)
-                        total_pdus_sent += 2
+                        total_pdus_sent += 1
 
+                # Collision PDU
                 if random.random() < COLLISION_EVENT_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
                     possible_collisions = [e for e in simulated_entities if e["id_obj"].entityID != entity["id_obj"].entityID]
                     if possible_collisions:
@@ -427,25 +450,39 @@ def main():
                         send_collision_pdu(entity, colliding_entity)
                         total_pdus_sent += 1
 
-                # Periodically send one of each additional PDU type (low frequency)
-                if random.random() < 0.01:
-                    target = random.choice(simulated_entities)
-                    send_data_pdu(entity, target)
-                    total_pdus_sent += 1
-                if random.random() < 0.005:
-                    target = random.choice(simulated_entities)
-                    action_request_pdu(entity, target)
-                    total_pdus_sent += 1
-                if random.random() < 0.002:
+                # Data PDU
+                if random.random() < DATA_PDU_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
+                    possible_targets = [e for e in simulated_entities if e["id_obj"].entityID != entity["id_obj"].entityID]
+                    if possible_targets:
+                        target = random.choice(possible_targets)
+                        send_data_pdu(entity, target)
+                        total_pdus_sent += 1
+                
+                # Action Request PDU
+                if random.random() < ACTION_REQUEST_PDU_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
+                    possible_targets = [e for e in simulated_entities if e["id_obj"].entityID != entity["id_obj"].entityID]
+                    if possible_targets:
+                        target = random.choice(possible_targets)
+                        send_action_request_pdu(entity, target)
+                        total_pdus_sent += 1
+                
+                # Start Resume PDU
+                if random.random() < START_RESUME_PDU_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
                     send_start_resume_pdu()
                     total_pdus_sent += 1
-                if random.random() < 0.005:
+                
+                # Set Data PDU
+                if random.random() < SET_DATA_PDU_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
                     send_set_data_pdu(entity)
                     total_pdus_sent += 1
-                if random.random() < 0.005:
+                
+                # Designator PDU
+                if random.random() < DESIGNATOR_PDU_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
                     send_designator_pdu(entity)
                     total_pdus_sent += 1
-                if random.random() < 0.005:
+
+                # Electromagnetic Emissions PDU
+                if random.random() < EMISSION_PDU_PROBABILITY * (dt / espdu_send_interval if espdu_send_interval > 0 else 1.0):
                     send_emission_pdu(entity)
                     total_pdus_sent += 1
 

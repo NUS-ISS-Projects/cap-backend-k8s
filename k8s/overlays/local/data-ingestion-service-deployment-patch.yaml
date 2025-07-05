@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-ingestion-service
+spec:
+  template:
+    spec:
+      imagePullSecrets: []
+      containers:
+      - name: data-ingestion-service
+        image: cap-backend-data-ingestion:latest
+        imagePullPolicy: Never
