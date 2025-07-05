@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-acquisition-service
+spec:
+  template:
+    spec:
+      imagePullSecrets: []
+      containers:
+      - name: data-acquisition-service
+        image: cap-backend-data-acquisition:latest
+        imagePullPolicy: Never
