@@ -49,6 +49,14 @@ kubectl wait --namespace ingress-nginx \
   --selector=app.kubernetes.io/component=controller \
   --timeout=600s
 
+# Wait for ingress-nginx-admission service to be ready
+echo "Waiting for ingress-nginx-admission service to be available..."
+while ! kubectl get svc -n ingress-nginx ingress-nginx-controller-admission &> /dev/null; do
+    echo "Waiting for ingress-nginx-admission service to be ready..."
+    sleep 5
+done
+echo "Ingress admission service is ready!"
+
 # Build and package the Spring Boot applications
 echo "Building data-ingestion-service..."
 cd ../cap-backend-dataIngestion
