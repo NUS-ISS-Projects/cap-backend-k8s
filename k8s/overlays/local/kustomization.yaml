@@ -1,0 +1,8 @@
+resources:
+  - ../../base
+
+patchesStrategicMerge:
+  - data-ingestion-service-deployment-patch.yaml
+  - data-processing-service-deployment-patch.yaml
+  - data-acquisition-service-deployment-patch.yaml
+  - ingress-patch.yaml
