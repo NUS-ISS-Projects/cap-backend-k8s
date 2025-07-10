@@ -23,11 +23,14 @@ from opendis.RangeCoordinates import GPS, deg2rad
 
 # --- Simulation Configuration ---
 UDP_PORT = 32000
-# Use environment variable for destination if set, otherwise default to GKE IP
-DESTINATION_ADDRESS = "34.142.175.247"  # Default GKE IP
+# Local Minikube configuration using dis.local domain
+DESTINATION_ADDRESS = "dis.local"  # Local domain configured in /etc/hosts
 
-# Uncomment and set this for local Minikube testing
-# DESTINATION_ADDRESS = "192.168.49.2"  # Replace with the output of `minikube ip`
+# Alternative: Use Minikube IP directly
+# DESTINATION_ADDRESS = "192.168.49.2"  # Minikube IP for local testing
+
+# Production GKE configuration (commented out for local development)
+# DESTINATION_ADDRESS = "34.142.175.247"  # GKE IP for production
 
 SIMULATION_DURATION_SECONDS = 9999
 PDUS_PER_SECOND_PER_ENTITY = 2
