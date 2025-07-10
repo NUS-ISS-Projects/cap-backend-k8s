@@ -1,0 +1,76 @@
+# Ignore all text files
+*.txt
+
+# Build artifacts
+target/
+build/
+dist/
+out/
+*.jar
+*.war
+*.ear
+*.class
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Docker
+.dockerignore
+.dockerconfigjson
+
+# Kubernetes secrets
+secrets/
+*.key
+*.pem
+*.crt
+
+# Coverage reports
+coverage/
+*.lcov
+
+# Dependency directories
+vendor/
+
+# Cache
+.cache/
+*.cache

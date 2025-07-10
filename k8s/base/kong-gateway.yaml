@@ -1,0 +1,181 @@
+# Kong Gateway for local development
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong-gateway
+  labels:
+    app: kong-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kong-gateway
+  template:
+    metadata:
+      labels:
+        app: kong-gateway
+    spec:
+      containers:
+      - name: kong
+        image: kong:3.4
+        env:
+        - name: KONG_DATABASE
+          value: "off"
+        - name: KONG_DECLARATIVE_CONFIG
+          value: "/kong/declarative/kong.yml"
+        - name: KONG_PROXY_ACCESS_LOG
+          value: "/dev/stdout"
+        - name: KONG_ADMIN_ACCESS_LOG
+          value: "/dev/stdout"
+        - name: KONG_PROXY_ERROR_LOG
+          value: "/dev/stderr"
+        - name: KONG_ADMIN_ERROR_LOG
+          value: "/dev/stderr"
+        - name: KONG_ADMIN_LISTEN
+          value: "0.0.0.0:8001"
+        - name: KONG_ADMIN_GUI_URL
+          value: "http://localhost:8002"
+        ports:
+        - containerPort: 8000
+          name: proxy
+        - containerPort: 8443
+          name: proxy-ssl
+        - containerPort: 8001
+          name: admin
+        - containerPort: 8444
+          name: admin-ssl
+        - containerPort: 8002
+          name: manager
+        - containerPort: 8445
+          name: manager-ssl
+        volumeMounts:
+        - name: kong-config
+          mountPath: /kong/declarative
+        readinessProbe:
+          httpGet:
+            path: /status
+            port: 8001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /status
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: kong-config
+        configMap:
+          name: kong-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-gateway-service
+  labels:
+    app: kong-gateway
+spec:
+  type: NodePort
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 32080
+    name: proxy
+  - port: 8001
+    targetPort: 8001
+    nodePort: 32081
+    name: admin
+  - port: 8002
+    targetPort: 8002
+    nodePort: 32082
+    name: manager
+  selector:
+    app: kong-gateway
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-config
+data:
+  kong.yml: |
+    _format_version: "3.0"
+    _transform: true
+    
+    services:
+    - name: data-ingestion-service
+      url: http://data-ingestion-service:8080
+      routes:
+      - name: ingestion-health
+        paths:
+        - /api/ingestion/health
+      - name: ingestion-metrics
+        paths:
+        - /api/ingestion/internal/metrics/realtime
+    
+    - name: data-processing-service
+      url: http://data-processing-service:8080
+      routes:
+      - name: processing-health
+        paths:
+        - /api/processing/health
+    
+    - name: data-acquisition-service
+      url: http://data-acquisition-service:8080
+      routes:
+      - name: acquisition-health
+        paths:
+        - /api/acquisition/health
+      - name: acquisition-entity-states
+        paths:
+        - /api/acquisition/entity-states
+      - name: acquisition-fire-events
+        paths:
+        - /api/acquisition/fire-events
+      - name: acquisition-collision-events
+        paths:
+        - /api/acquisition/collision-events
+      - name: acquisition-detonation-events
+        paths:
+        - /api/acquisition/detonation-events
+      - name: acquisition-aggregate
+        paths:
+        - /api/acquisition/aggregate
+      - name: acquisition-monthly
+        paths:
+        - /api/acquisition/monthly
+      - name: acquisition-realtime
+        paths:
+        - /api/acquisition/realtime
+      - name: acquisition-metrics
+        paths:
+        - /api/acquisition/metrics
+    
+    plugins:
+    - name: cors
+      config:
+        origins:
+        - "*"
+        methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+        headers:
+        - Accept
+        - Accept-Version
+        - Content-Length
+        - Content-MD5
+        - Content-Type
+        - Date
+        - X-Auth-Token
+        exposed_headers:
+        - X-Auth-Token
+        credentials: true
+        max_age: 3600
+    
+    - name: rate-limiting
+      config:
+        minute: 100
+        hour: 1000
+        policy: local

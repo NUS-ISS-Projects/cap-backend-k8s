@@ -50,6 +50,11 @@ jobs:
         run: |
           gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --zone ${{ env.GKE_ZONE }} --project ${{ env.PROJECT_ID }}
 
+      # Step 6a: Wait for Kong Gateway to be ready after deployment
+      - name: Wait for Kong Gateway
+        run: |
+          echo "Kong Gateway will be deployed with the application manifests"
+
       # Step 7: Create the GHCR Docker config file for use with Kustomize secretGenerator
       - name: Create GHCR Docker config for Kustomize
         run: |

@@ -1,2 +1,5 @@
 resources:
   - ../../base
+
+patchesStrategicMerge:
+  - kong-gateway-patch.yaml

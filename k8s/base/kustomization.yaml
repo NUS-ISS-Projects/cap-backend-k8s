@@ -1,5 +1,5 @@
 resources:
-  - ingress.yaml
+  - kong-gateway.yaml
   - data-ingestion-service-deployment.yaml
   - data-ingestion-service.yaml
   - data-ingestion-service-udp.yaml
@@ -28,7 +28,6 @@ generatorOptions:
   disableNameSuffixHash: true
 
 # resources:
-#   - ingress.yaml
 #   - storage-class.yaml
 #   - kafka-statefulset.yaml
 #   - kafka-service.yaml
