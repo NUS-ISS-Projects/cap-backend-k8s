@@ -151,8 +151,19 @@ test_api_endpoints() {
     CURRENT_MONTH=$(date +%-m)
     test_endpoint "GET" "$BASE_URL/api/acquisition/monthly?year=$CURRENT_YEAR&month=$CURRENT_MONTH" "Data Acquisition - Monthly Data"
     
+    # Test realtime logs endpoint with timestamp parameters
+    # Using epoch timestamps: 0 (1970-01-01) to current time + 1 day
+    CURRENT_TIMESTAMP=$(date +%s)000  # Convert to milliseconds
+    FUTURE_TIMESTAMP=$((CURRENT_TIMESTAMP + 86400000))  # Add 24 hours in milliseconds
+    test_endpoint "GET" "$BASE_URL/api/acquisition/realtime/logs?startTime=0&endTime=$FUTURE_TIMESTAMP" "Data Acquisition - Realtime Logs"
+    
+    # Test realtime logs with specific time range (last hour)
+    HOUR_AGO_TIMESTAMP=$((CURRENT_TIMESTAMP - 3600000))  # Subtract 1 hour in milliseconds
+    test_endpoint "GET" "$BASE_URL/api/acquisition/realtime/logs?startTime=$HOUR_AGO_TIMESTAMP&endTime=$CURRENT_TIMESTAMP" "Data Acquisition - Realtime Logs (Last Hour)"
+    
     # Note: Internal metrics endpoint (/api/ingestion/internal/metrics/realtime) is for
     # service-to-service communication only and not exposed via API gateway
+    # Note: Realtime logs may return empty Pdu_messages array if no PDU data exists in the database
     
     echo
 }

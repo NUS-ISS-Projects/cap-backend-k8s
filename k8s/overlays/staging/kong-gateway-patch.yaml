@@ -66,6 +66,12 @@ data:
       paths:
       - /api/acquisition/monthly
       strip_path: false
+      
+    - name: acquisition-realtime-logs
+      service: data-acquisition-service
+      paths:
+      - /api/acquisition/realtime/logs
+      strip_path: false
     
     plugins:
     - name: cors
@@ -121,6 +127,9 @@ metadata:
   name: kong-gateway
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: kong-gateway
   template:
     spec:
       containers:
