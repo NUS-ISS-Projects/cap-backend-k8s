@@ -68,6 +68,10 @@ data:
         paths:
         - /api/acquisition/metrics
         strip_path: false
+      - name: acquisition-realtime-logs
+        paths:
+        - /api/acquisition/realtime/logs
+        strip_path: false
     
     plugins:
     - name: cors

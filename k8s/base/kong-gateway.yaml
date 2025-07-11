@@ -149,6 +149,9 @@ data:
       - name: acquisition-metrics
         paths:
         - /api/acquisition/metrics
+      - name: acquisition-realtime-logs
+        paths:
+        - /api/acquisition/realtime/logs
     
     plugins:
     - name: cors
