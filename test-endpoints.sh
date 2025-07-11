@@ -141,10 +141,8 @@ test_api_endpoints() {
     test_endpoint "GET" "$BASE_URL/api/acquisition/entity-states" "Data Acquisition - Get Entity States"
     test_endpoint "GET" "$BASE_URL/api/acquisition/fire-events" "Data Acquisition - Get Fire Events"
     
-    # Test with query parameters
-    START_DATE=$(date -d "yesterday" +%Y-%m-%d)
-    END_DATE=$(date +%Y-%m-%d)
-    test_endpoint "GET" "$BASE_URL/api/acquisition/aggregate?startDate=$START_DATE&endDate=$END_DATE" "Data Acquisition - Aggregate Data"
+    # Test aggregate endpoint with various scenarios
+    test_aggregate_endpoints
     
     # Monthly data requires year and month parameters
     CURRENT_YEAR=$(date +%Y)
@@ -164,6 +162,39 @@ test_api_endpoints() {
     # Note: Internal metrics endpoint (/api/ingestion/internal/metrics/realtime) is for
     # service-to-service communication only and not exposed via API gateway
     # Note: Realtime logs may return empty Pdu_messages array if no PDU data exists in the database
+    
+    echo
+}
+
+# Function to test aggregate endpoints with various scenarios
+test_aggregate_endpoints() {
+    print_status "INFO" "=== Testing Aggregate Endpoints ==="
+    
+    # Test "today" view - no parameters required
+    test_endpoint "GET" "$BASE_URL/api/acquisition/aggregate?today=true" "Data Acquisition - Aggregate Today View"
+    
+    # Test single date aggregation
+    CURRENT_DATE=$(date +%Y-%m-%d)
+    test_endpoint "GET" "$BASE_URL/api/acquisition/aggregate?startDate=$CURRENT_DATE" "Data Acquisition - Aggregate Single Date"
+    
+    # Test week view aggregation
+    test_endpoint "GET" "$BASE_URL/api/acquisition/aggregate?startDate=$CURRENT_DATE&week=true" "Data Acquisition - Aggregate Week View"
+    
+    # Test month view aggregation
+    test_endpoint "GET" "$BASE_URL/api/acquisition/aggregate?startDate=$CURRENT_DATE&month=true" "Data Acquisition - Aggregate Month View"
+    
+    # Test custom date range aggregation
+    START_DATE=$(date -d "7 days ago" +%Y-%m-%d)
+    END_DATE=$(date +%Y-%m-%d)
+    test_endpoint "GET" "$BASE_URL/api/acquisition/aggregate?startDate=$START_DATE&endDate=$END_DATE" "Data Acquisition - Aggregate Custom Range"
+    
+    # Test with historical date range (should return zero counts)
+    HISTORICAL_START="2025-01-01"
+    HISTORICAL_END="2025-01-02"
+    test_endpoint "GET" "$BASE_URL/api/acquisition/aggregate?startDate=$HISTORICAL_START&endDate=$HISTORICAL_END" "Data Acquisition - Aggregate Historical Range"
+    
+    # Test edge cases
+    test_endpoint "GET" "$BASE_URL/api/acquisition/aggregate?startDate=$CURRENT_DATE&endDate=$CURRENT_DATE" "Data Acquisition - Aggregate Same Start/End Date"
     
     echo
 }
