@@ -72,7 +72,14 @@ data:
         paths:
         - /api/acquisition/realtime/logs
         strip_path: false
-    
+    - name: user-service
+      url: http://user-service:8080
+      routes:
+      - name: login
+        paths:
+        - /api/auth/login
+        strip_path: false
+
     plugins:
     - name: cors
       config:

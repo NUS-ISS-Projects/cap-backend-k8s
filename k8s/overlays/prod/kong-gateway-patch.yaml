@@ -17,6 +17,9 @@ data:
       
     - name: data-acquisition-service
       url: http://data-acquisition-service.default.svc.cluster.local:8080
+    - name: user-service
+      url: http://user-service.default.svc.cluster.local:8080
+      
     
     routes:
     - name: ingestion-health
@@ -72,6 +75,14 @@ data:
       paths:
       - /api/acquisition/realtime/logs
       strip_path: false
+
+    - name: login
+      service: user-service
+      paths:
+      - /api/auth/login
+      strip_path: false
+
+    
     
     plugins:
     - name: cors
