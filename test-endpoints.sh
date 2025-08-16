@@ -140,6 +140,10 @@ test_api_endpoints() {
     # Data Acquisition API endpoints
     test_endpoint "GET" "$BASE_URL/api/acquisition/entity-states" "Data Acquisition - Get Entity States"
     test_endpoint "GET" "$BASE_URL/api/acquisition/fire-events" "Data Acquisition - Get Fire Events"
+    test_endpoint "GET" "$BASE_URL/api/acquisition/collision-events" "Data Acquisition - Get Collision Events"
+    test_endpoint "GET" "$BASE_URL/api/acquisition/detonation-events" "Data Acquisition - Get Detonation Events"
+    test_endpoint "GET" "$BASE_URL/api/acquisition/metrics" "Data Acquisition - Get Metrics"
+    test_endpoint "GET" "$BASE_URL/api/acquisition/realtime" "Data Acquisition - Get Realtime Metrics"
     
     # Test aggregate endpoint with various scenarios
     test_aggregate_endpoints
