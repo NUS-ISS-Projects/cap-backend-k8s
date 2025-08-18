@@ -153,6 +153,30 @@ data:
         paths:
         - /api/acquisition/realtime/logs
     
+    - name: cap-user-service
+      url: http://cap-user-service:8080
+      routes:
+      - name: user-health
+        paths:
+        - /api/user/health
+        strip_path: false
+      - name: user-auth-register
+        paths:
+        - /api/auth/register
+        strip_path: false
+      - name: user-auth-login
+        paths:
+        - /api/auth/login
+        strip_path: false
+      - name: user-profile
+        paths:
+        - /api/users/profile
+        strip_path: false
+      - name: user-sessions
+        paths:
+        - /api/user-sessions
+        strip_path: false
+    
     plugins:
     - name: cors
       config:

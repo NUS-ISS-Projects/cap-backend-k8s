@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cap-user-service
+spec:
+  template:
+    spec:
+      imagePullSecrets: []
+      containers:
+      - name: cap-user-service
+        image: cap-user-service:latest
+        imagePullPolicy: Never

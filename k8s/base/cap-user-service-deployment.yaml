@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cap-user-service
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  revisionHistoryLimit: 5  # Retain 5 revisions for rollback
+  selector:
+    matchLabels:
+      app: cap-user-service
+  template:
+    metadata:
+      labels:
+        app: cap-user-service
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+      - name: cap-user-service
+        image: ghcr.io/nus-iss-projects/cap-user-service/cap-user-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+        readinessProbe:
+          httpGet:
+            path: /api/user/health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/user/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        env:
+          - name: SPRING_DATASOURCE_URL
+            value: "jdbc:postgresql://postgres:5432/dis_db"
+          - name: SPRING_DATASOURCE_USERNAME
+            value: "dis_user"
+          - name: SPRING_DATASOURCE_PASSWORD
+            value: "dis_pass"
+          - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+            value: "update"
+          - name: FIREBASE_API_KEY
+            value: "AIzaSyBEdGWiW7Ss3q3fObs4qCb966-lwapvmNw"
+          - name: FIREBASE_SA_B64
+            valueFrom:
+              secretKeyRef:
+                name: firebase-service-account
+                key: service-account-b64
