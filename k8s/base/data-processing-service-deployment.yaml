@@ -37,14 +37,18 @@ spec:
           httpGet:
             path: /api/processing/health
             port: 8080
-          initialDelaySeconds: 20
+          initialDelaySeconds: 60
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
         livenessProbe:
           httpGet:
             path: /api/processing/health
             port: 8080
-          initialDelaySeconds: 30
+          initialDelaySeconds: 90
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         env:
           - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
             value: "kafka:9092"
