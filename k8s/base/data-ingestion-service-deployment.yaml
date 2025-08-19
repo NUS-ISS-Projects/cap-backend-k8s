@@ -30,11 +30,11 @@ spec:
           protocol: UDP
         resources:
           limits:
-            cpu: "500m"
-            memory: "512Mi"
+            cpu: "800m"
+            memory: "768Mi"
           requests:
-            cpu: "100m"
-            memory: "256Mi"
+            cpu: "150m"
+            memory: "384Mi"
         readinessProbe:
           httpGet:
             path: /api/ingestion/health
