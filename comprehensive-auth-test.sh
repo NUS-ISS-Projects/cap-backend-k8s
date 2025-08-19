@@ -85,7 +85,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 # KONG_URL="http://localhost:32080"  # Local Minikube
-KONG_URL="http://34.87.65.17:8000"  # GKE external IP
+KONG_URL="http://34.87.97.140:8000"  # GKE external IP
 
 # Generate unique test identifiers for each run
 TEST_RUN_ID="$(date +%s)_$(shuf -i 1000-9999 -n 1)"

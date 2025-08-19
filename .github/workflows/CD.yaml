@@ -90,8 +90,8 @@ jobs:
       - name: Check Rollout Status for DIS Platform
         id: rollout_status # This ID is crucial for the job output
         run: |
-          deployments=("data-ingestion-service" "data-processing-service" "data-acquisition-service" "cap-user-service" "kong-gateway")
-          statefulsets=("kafka" "zookeeper" "postgres")
+          deployments=("data-ingestion-service" "data-processing-service" "data-acquisition-service" "cap-user-service" "kong-gateway" "postgres")
+          statefulsets=("kafka" "zookeeper")
           failed_components_list=""
 
           for dep_name in "${deployments[@]}"; do
