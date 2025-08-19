@@ -11,67 +11,175 @@ data:
     services:
     - name: data-ingestion-service
       url: http://data-ingestion-service.default.svc.cluster.local:8080
+      routes:
+      - name: ingestion-health
+        paths:
+        - /api/ingestion/health
+        strip_path: false
       
     - name: data-processing-service
       url: http://data-processing-service.default.svc.cluster.local:8080
+      routes:
+      - name: processing-health
+        paths:
+        - /api/processing/health
+        strip_path: false
       
     - name: data-acquisition-service
       url: http://data-acquisition-service.default.svc.cluster.local:8080
+      routes:
+      - name: acquisition-health
+        paths:
+        - /api/acquisition/health
+        strip_path: false
+      - name: acquisition-entity-states
+        paths:
+        - /api/acquisition/entity-states
+        strip_path: false
+        plugins:
+        - name: jwt
+          config:
+            header_names:
+            - authorization
+            claims_to_verify:
+            - exp
+            key_claim_name: iss
+      - name: acquisition-fire-events
+        paths:
+        - /api/acquisition/fire-events
+        strip_path: false
+        plugins:
+        - name: jwt
+          config:
+            header_names:
+            - authorization
+            claims_to_verify:
+            - exp
+            key_claim_name: iss
+      - name: acquisition-collision-events
+        paths:
+        - /api/acquisition/collision-events
+        strip_path: false
+        plugins:
+        - name: jwt
+          config:
+            header_names:
+            - authorization
+            claims_to_verify:
+            - exp
+            key_claim_name: iss
+      - name: acquisition-detonation-events
+        paths:
+        - /api/acquisition/detonation-events
+        strip_path: false
+        plugins:
+        - name: jwt
+          config:
+            header_names:
+            - authorization
+            claims_to_verify:
+            - exp
+            key_claim_name: iss
+      - name: acquisition-aggregate
+        paths:
+        - /api/acquisition/aggregate
+        strip_path: false
+        plugins:
+        - name: jwt
+          config:
+            header_names:
+            - authorization
+            claims_to_verify:
+            - exp
+            key_claim_name: iss
+      - name: acquisition-monthly
+        paths:
+        - /api/acquisition/monthly
+        strip_path: false
+        plugins:
+        - name: jwt
+          config:
+            header_names:
+            - authorization
+            claims_to_verify:
+            - exp
+            key_claim_name: iss
+      - name: acquisition-realtime
+        paths:
+        - /api/acquisition/realtime
+        strip_path: false
+        plugins:
+        - name: jwt
+          config:
+            header_names:
+            - authorization
+            claims_to_verify:
+            - exp
+            key_claim_name: iss
+      - name: acquisition-metrics
+        paths:
+        - /api/acquisition/metrics
+        strip_path: false
+        plugins:
+        - name: jwt
+          config:
+            header_names:
+            - authorization
+            claims_to_verify:
+            - exp
+            key_claim_name: iss
+      - name: acquisition-realtime-logs
+        paths:
+        - /api/acquisition/realtime/logs
+        strip_path: false
+        plugins:
+        - name: jwt
+          config:
+            header_names:
+            - authorization
+            claims_to_verify:
+            - exp
+            key_claim_name: iss
     
-    routes:
-    - name: ingestion-health
-      service: data-ingestion-service
-      paths:
-      - /api/ingestion/health
-      strip_path: false
-      
-    - name: ingestion-metrics
-      service: data-ingestion-service
-      paths:
-      - /api/ingestion/internal/metrics/realtime
-      strip_path: false
-      
-    - name: processing-health
-      service: data-processing-service
-      paths:
-      - /api/processing/health
-      strip_path: false
-      
-    - name: acquisition-health
-      service: data-acquisition-service
-      paths:
-      - /api/acquisition/health
-      strip_path: false
-      
-    - name: acquisition-entities
-      service: data-acquisition-service
-      paths:
-      - /api/acquisition/entities
-      strip_path: false
-      
-    - name: acquisition-fire-events
-      service: data-acquisition-service
-      paths:
-      - /api/acquisition/fire-events
-      strip_path: false
-      
-    - name: acquisition-aggregate
-      service: data-acquisition-service
-      paths:
-      - /api/acquisition/aggregate
-      strip_path: false
-      
-    - name: acquisition-monthly
-      service: data-acquisition-service
-      paths:
-      - /api/acquisition/monthly
-      strip_path: false
-      
-    - name: acquisition-realtime-logs
-      service: data-acquisition-service
-      paths:
-      - /api/acquisition/realtime/logs
-      strip_path: false
+    - name: cap-user-service
+      url: http://cap-user-service.default.svc.cluster.local:8080
+      routes:
+      - name: user-health
+        paths:
+        - /api/user/health
+        strip_path: false
+      - name: user-auth-register
+        paths:
+        - /api/auth/register
+        strip_path: false
+      - name: user-auth-login
+        paths:
+        - /api/auth/login
+        strip_path: false
+      - name: user-profile
+        paths:
+        - /api/users/profile
+        strip_path: false
+        plugins:
+        - name: jwt
+          config:
+            header_names:
+            - authorization
+            claims_to_verify:
+            - exp
+            key_claim_name: iss
+      - name: user-sessions
+        paths:
+        - /api/user-sessions
+        strip_path: false
+        plugins:
+        - name: jwt
+          config:
+            header_names:
+            - authorization
+            claims_to_verify:
+            - exp
+            key_claim_name: iss
     
     plugins:
     - name: cors
@@ -107,6 +215,23 @@ data:
     - name: prometheus
       config:
         per_consumer: true
+        
+    consumers:
+    - username: firebase-user
+      jwt_secrets:
+      - key: https://securetoken.google.com/cap-backend-user
+        algorithm: RS256
+        secret: dummy-secret
+        rsa_public_key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAslvFtBzK1HViGBSK2VTO
+          HPCMu/U+ooDP9wUsMN2sxHDFYSwvmtmdYfTU2s+syjYfnLWvUD6TQcl+JIo4hH2x
+          MLhPLytv2k+TnrYRxmOkeGTO6NI7b4mRYik4ipW4rLU3M+6y5milDXh0ZWXlMu1V
+          AxqQRveBP01DhC5C+/jeiL6MuOSIUhrMdfd0emU/UDj7tENUURqYnm+ixa+OxUfh
+          inyZRdcUJyfk+LymKsg7JZ4lFcf9tVx1McU+4t0xz7xgS+JrdDQXCIzXhGHfa7Gc
+          JbU2W20yIv1hWF3sq8eO2JtegkfNJtcrfjkR19x6W4IgjtwW2ABuCM1Q1Pdm9NSc
+          tQIDAQAB
+          -----END PUBLIC KEY-----
 ---
 apiVersion: v1
 kind: Service
@@ -134,24 +259,30 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kong-gateway
+  labels:
+    app: kong-gateway
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: kong-gateway
   template:
+    metadata:
+      labels:
+        app: kong-gateway
     spec:
       containers:
       - name: kong
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "500m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
+        image: kong:3.4
         env:
+        - name: KONG_DATABASE
+          value: "off"
+        - name: KONG_DECLARATIVE_CONFIG
+          value: "/kong/declarative/kong.yml"
         - name: KONG_LOG_LEVEL
           value: "notice"
         - name: KONG_PLUGINS
-          value: "bundled,cors,rate-limiting,prometheus"
+          value: "bundled,cors,rate-limiting,prometheus,jwt"
         - name: KONG_NGINX_WORKER_PROCESSES
           value: "2"
         - name: KONG_PROXY_ACCESS_LOG
@@ -162,6 +293,33 @@ spec:
           value: "/dev/stderr"
         - name: KONG_ADMIN_ERROR_LOG
           value: "/dev/stderr"
+        - name: KONG_ADMIN_LISTEN
+          value: "0.0.0.0:8001"
+        - name: KONG_ADMIN_GUI_URL
+          value: "http://localhost:8002"
+        ports:
+        - containerPort: 8000
+          name: proxy
+        - containerPort: 8443
+          name: proxy-ssl
+        - containerPort: 8001
+          name: admin
+        - containerPort: 8444
+          name: admin-ssl
+        - containerPort: 8002
+          name: manager
+        - containerPort: 8445
+          name: manager-ssl
+        volumeMounts:
+        - name: kong-config
+          mountPath: /kong/declarative
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
         livenessProbe:
           httpGet:
             path: /status
@@ -174,6 +332,10 @@ spec:
             port: 8001
           initialDelaySeconds: 5
           periodSeconds: 5
+      volumes:
+      - name: kong-config
+        configMap:
+          name: kong-config
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

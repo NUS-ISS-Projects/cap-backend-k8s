@@ -25,11 +25,7 @@ data:
       - /api/ingestion/health
       strip_path: false
       
-    - name: ingestion-metrics
-      service: data-ingestion-service
-      paths:
-      - /api/ingestion/internal/metrics/realtime
-      strip_path: false
+
       
     - name: processing-health
       service: data-processing-service
