@@ -155,11 +155,11 @@ spec:
       - name: kong
         resources:
           requests:
-            memory: "256Mi"
-            cpu: "50m"
+            memory: "384Mi"
+            cpu: "100m"
           limits:
-            memory: "512Mi"
-            cpu: "200m"
+            memory: "768Mi"
+            cpu: "300m"
         env:
         - name: KONG_LOG_LEVEL
           value: "info"
