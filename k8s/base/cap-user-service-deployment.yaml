@@ -31,8 +31,8 @@ spec:
             cpu: "300m"
             memory: "768Mi"
           requests:
-            cpu: "100m"
-            memory: "384Mi"
+            cpu: "200m"
+            memory: "400Mi"
         readinessProbe:
           httpGet:
             path: /api/user/health
