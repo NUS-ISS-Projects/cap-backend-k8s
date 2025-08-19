@@ -128,7 +128,12 @@ echo "Test Run ID: $TEST_RUN_ID"
 echo "Kong Gateway URL: $KONG_URL"
 echo "Test User Email: $TEST_EMAIL"
 echo "Test Username: $TEST_USERNAME"
-echo "Session Log: $TEST_SESSION_FILE"
+# Display session log with jq formatting if it contains JSON
+if [ -f "$TEST_SESSION_FILE" ] && command -v jq >/dev/null 2>&1 && grep -q '{' "$TEST_SESSION_FILE" 2>/dev/null; then
+    echo "Session Log: $TEST_SESSION_FILE (JSON formatted)"
+else
+    echo "Session Log: $TEST_SESSION_FILE"
+fi
 echo ""
 
 # Function to print test results
@@ -153,9 +158,10 @@ print_result() {
     if [ -n "$response" ] && [ "$response" != "" ]; then
         # Check if response is valid JSON and format with jq if available
         if command -v jq >/dev/null 2>&1 && echo "$response" | jq . >/dev/null 2>&1; then
-            echo -e "${BLUE}  Response Body (formatted):${NC}"
-            echo "$response" | jq .
-            echo "  Response Body: $response" >> "$TEST_SESSION_FILE"
+            echo -e "${BLUE}  Response Body: JSON (see log file for formatted output)${NC}"
+            # Format JSON with jq for the log file
+            echo "  Response Body (JSON formatted):" >> "$TEST_SESSION_FILE"
+            echo "$response" | jq . >> "$TEST_SESSION_FILE"
         else
             echo -e "${BLUE}  Response Body:${NC} $response"
             echo "  Response Body: $response" >> "$TEST_SESSION_FILE"
@@ -864,7 +870,12 @@ test_exit_code=$?
 echo ""
 echo -e "${BLUE}Session Details:${NC}"
 echo "- Test Run ID: $TEST_RUN_ID"
-echo "- Session Log: $TEST_SESSION_FILE"
+# Display session log path only
+if [ -f "$TEST_SESSION_FILE" ] && command -v jq >/dev/null 2>&1 && grep -q '{' "$TEST_SESSION_FILE" 2>/dev/null; then
+    echo "- Session Log: $TEST_SESSION_FILE (JSON formatted)"
+else
+    echo "- Session Log: $TEST_SESSION_FILE"
+fi
 echo "- Unique Test Account: $TEST_EMAIL"
 echo ""
 
