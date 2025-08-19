@@ -84,7 +84,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-KONG_URL="http://192.168.49.2:32080"
+# KONG_URL="http://localhost:32080"  # Local Minikube
+KONG_URL="http://34.87.65.17:8000"  # GKE external IP
 
 # Generate unique test identifiers for each run
 TEST_RUN_ID="$(date +%s)_$(shuf -i 1000-9999 -n 1)"
@@ -145,9 +146,20 @@ print_result() {
         echo "  Result: PASSED" >> "$TEST_SESSION_FILE"
     else
         echo -e "${RED}✗ $test_name: FAILED (Expected: $expected_code, Got: $status_code)${NC}"
-        echo -e "${YELLOW}Response: $response${NC}"
         echo "  Result: FAILED" >> "$TEST_SESSION_FILE"
-        echo "  Response: $response" >> "$TEST_SESSION_FILE"
+    fi
+    
+    # Always show response content for transparency
+    if [ -n "$response" ] && [ "$response" != "" ]; then
+        # Check if response is valid JSON and format with jq if available
+        if command -v jq >/dev/null 2>&1 && echo "$response" | jq . >/dev/null 2>&1; then
+            echo -e "${BLUE}  Response Body (formatted):${NC}"
+            echo "$response" | jq .
+            echo "  Response Body: $response" >> "$TEST_SESSION_FILE"
+        else
+            echo -e "${BLUE}  Response Body:${NC} $response"
+            echo "  Response Body: $response" >> "$TEST_SESSION_FILE"
+        fi
     fi
     echo "" >> "$TEST_SESSION_FILE"
 }
