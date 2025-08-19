@@ -17,5 +17,5 @@ spec:
       target:
         type: Utilization
         # Target 70% of the requested CPU.
-        # If request is 100m, HPA will scale up if average usage > 70m.
-        averageUtilization: 85
+        # If request is 50m, HPA will scale up if average usage > 35m.
+        averageUtilization: 70
