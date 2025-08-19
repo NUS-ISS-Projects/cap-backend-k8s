@@ -1,5 +1,5 @@
 resources:
-  - kong-gateway.yaml
+  - kong-gateway-firebase.yaml
   - data-ingestion-service-deployment.yaml
   - data-ingestion-service.yaml
   - data-ingestion-service-udp.yaml

@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kong-config
+  name: kong-config-firebase
 data:
   kong.yml: |
     _format_version: "3.0"
@@ -236,7 +236,7 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: kong-gateway
+  name: kong-gateway-service
 spec:
   type: LoadBalancer
   ports:
@@ -335,14 +335,4 @@ spec:
       volumes:
       - name: kong-config
         configMap:
-          name: kong-config
----
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: kong-gateway-pdb
-spec:
-  minAvailable: 2
-  selector:
-    matchLabels:
-      app: kong-gateway
+          name: kong-config-firebase

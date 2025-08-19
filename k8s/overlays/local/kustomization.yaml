@@ -1,9 +1,9 @@
 resources:
   - ../../base
 
-patchesStrategicMerge:
-  - data-ingestion-service-deployment-patch.yaml
-  - data-processing-service-deployment-patch.yaml
-  - data-acquisition-service-deployment-patch.yaml
-  - cap-user-service-deployment-patch.yaml
-  - kong-gateway-patch.yaml
+patches:
+  - path: data-ingestion-service-deployment-patch.yaml
+  - path: data-processing-service-deployment-patch.yaml
+  - path: data-acquisition-service-deployment-patch.yaml
+  - path: cap-user-service-deployment-patch.yaml
+  - path: kong-gateway-patch.yaml
