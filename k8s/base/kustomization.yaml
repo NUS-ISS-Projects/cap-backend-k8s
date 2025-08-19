@@ -1,5 +1,5 @@
 resources:
-  - kong-gateway.yaml
+  - kong-gateway-firebase.yaml
   - data-ingestion-service-deployment.yaml
   - data-ingestion-service.yaml
   - data-ingestion-service-udp.yaml
@@ -7,6 +7,8 @@ resources:
   - data-processing-service.yaml
   - data-acquisition-service-deployment.yaml
   - data-acquisition-service.yaml
+  - cap-user-service-deployment.yaml
+  - cap-user-service.yaml
   - kafka-service.yaml
   - kafka-statefulset.yaml
   - postgres-deployment.yaml
@@ -15,7 +17,8 @@ resources:
   - zookeeper-statefulset.yaml
   - hpa-data-ingestion-service.yaml
   - hpa-data-processing-service.yaml
-  - hpa-data-acquisition-service.yaml 
+  - hpa-data-acquisition-service.yaml
+  - hpa-cap-user-service.yaml 
 
 secretGenerator:
   # GHCR Docker Registry secret

@@ -1,77 +1,96 @@
-# Staging overlay for Kong Gateway configuration
+# Staging overlay for Kong Gateway configuration with Firebase JWT
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kong-config
+  name: kong-config-firebase
 data:
   kong.yml: |
     _format_version: "3.0"
     _transform: true
     
     services:
+    # Data Ingestion Service
     - name: data-ingestion-service
       url: http://data-ingestion-service.default.svc.cluster.local:8080
-      
+      routes:
+      # Health endpoint - NO authentication
+      - name: data-ingestion-health
+        paths:
+        - /api/ingestion/health
+        strip_path: false
+      # All other ingestion endpoints - WITH authentication
+      - name: data-ingestion-protected
+        paths:
+        - /api/ingestion
+        strip_path: false
+        plugins:
+        - name: jwt-firebase
+          config:
+            firebase_project_id: "cap-backend-user"
+        
+    # Data Processing Service
     - name: data-processing-service
       url: http://data-processing-service.default.svc.cluster.local:8080
-      
+      routes:
+      # Health endpoint - NO authentication
+      - name: data-processing-health
+        paths:
+        - /api/processing/health
+        strip_path: false
+      # All other processing endpoints - WITH authentication
+      - name: data-processing-protected
+        paths:
+        - /api/processing
+        strip_path: false
+        plugins:
+        - name: jwt-firebase
+          config:
+            firebase_project_id: "cap-backend-user"
+        
+    # Data Acquisition Service
     - name: data-acquisition-service
       url: http://data-acquisition-service.default.svc.cluster.local:8080
-    
-    routes:
-    - name: ingestion-health
-      service: data-ingestion-service
-      paths:
-      - /api/ingestion/health
-      strip_path: false
-      
-    - name: ingestion-metrics
-      service: data-ingestion-service
-      paths:
-      - /api/ingestion/internal/metrics/realtime
-      strip_path: false
-      
-    - name: processing-health
-      service: data-processing-service
-      paths:
-      - /api/processing/health
-      strip_path: false
-      
-    - name: acquisition-health
-      service: data-acquisition-service
-      paths:
-      - /api/acquisition/health
-      strip_path: false
-      
-    - name: acquisition-entities
-      service: data-acquisition-service
-      paths:
-      - /api/acquisition/entities
-      strip_path: false
-      
-    - name: acquisition-fire-events
-      service: data-acquisition-service
-      paths:
-      - /api/acquisition/fire-events
-      strip_path: false
-      
-    - name: acquisition-aggregate
-      service: data-acquisition-service
-      paths:
-      - /api/acquisition/aggregate
-      strip_path: false
-      
-    - name: acquisition-monthly
-      service: data-acquisition-service
-      paths:
-      - /api/acquisition/monthly
-      strip_path: false
-      
-    - name: acquisition-realtime-logs
-      service: data-acquisition-service
-      paths:
-      - /api/acquisition/realtime/logs
-      strip_path: false
+      routes:
+      # Health endpoint - NO authentication
+      - name: data-acquisition-health
+        paths:
+        - /api/acquisition/health
+        strip_path: false
+      # All other acquisition endpoints - WITH authentication
+      - name: data-acquisition-protected
+        paths:
+        - /api/acquisition
+        strip_path: false
+        plugins:
+        - name: jwt-firebase
+          config:
+            firebase_project_id: "cap-backend-user"
+        
+    # User Service
+    - name: cap-user-service
+      url: http://cap-user-service.default.svc.cluster.local:8080
+      routes:
+      # Health endpoint - NO authentication
+      - name: user-health
+        paths:
+        - /api/user/health
+        strip_path: false
+      # Public auth endpoints - NO authentication
+      - name: user-auth-public
+        paths:
+        - /api/auth/login
+        - /api/auth/register
+        strip_path: false
+      # Protected user endpoints - WITH authentication
+      - name: user-protected
+        paths:
+        - /api/users
+        - /api/user-sessions
+        strip_path: false
+        plugins:
+        - name: jwt-firebase
+          config:
+            firebase_project_id: "cap-backend-user"
     
     plugins:
     - name: cors
@@ -106,11 +125,11 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: kong-gateway
+  name: kong-gateway-service
 spec:
   type: LoadBalancer
   ports:
-  - name: proxy
+  - name: http
     port: 80
     targetPort: 8000
     protocol: TCP
@@ -136,13 +155,25 @@ spec:
       - name: kong
         resources:
           requests:
-            memory: "256Mi"
+            memory: "512Mi"
             cpu: "250m"
           limits:
-            memory: "512Mi"
+            memory: "1Gi"
             cpu: "500m"
         env:
         - name: KONG_LOG_LEVEL
           value: "info"
         - name: KONG_PLUGINS
-          value: "bundled,cors,rate-limiting"
+          value: "bundled,cors,rate-limiting,jwt-firebase"
+        readinessProbe:
+          httpGet:
+            path: /status
+            port: 8001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /status
+            port: 8001
+          initialDelaySeconds: 60
+          periodSeconds: 30

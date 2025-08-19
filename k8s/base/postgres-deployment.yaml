@@ -24,6 +24,8 @@ spec:
           value: "dis_user"
         - name: POSTGRES_PASSWORD
           value: "dis_pass"
+        - name: PGDATA
+          value: "/var/lib/postgresql/data/pgdata"
         volumeMounts:
         - name: postgres-storage
           mountPath: /var/lib/postgresql/data

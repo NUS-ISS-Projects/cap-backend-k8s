@@ -53,6 +53,10 @@ echo "Building data-acquisition-service..."
 cd ../cap-backend-dataAcquisition
 mvn clean package -DskipTests
 
+echo "Building cap-user-service..."
+cd ../cap-user-service
+mvn clean package -DskipTests
+
 # Build Docker images
 echo "Building Docker images..."
 cd ../cap-backend-dataIngestion
@@ -64,8 +68,24 @@ docker build -t cap-backend-data-processing:latest .
 cd ../cap-backend-dataAcquisition
 docker build -t cap-backend-data-acquisition:latest .
 
+cd ../cap-user-service
+docker build -t cap-user-service:latest .
+
 # Return to k8s directory
 cd ../cap-backend-k8s
+
+# Create Firebase service account secret
+echo "Creating Firebase service account secret..."
+if kubectl get secret firebase-service-account &> /dev/null; then
+    echo "Firebase service account secret already exists, deleting and recreating..."
+    kubectl delete secret firebase-service-account
+fi
+
+# Create the secret from the Firebase service account JSON file
+kubectl create secret generic firebase-service-account \
+    --from-literal=service-account-b64="$(base64 -w 0 cap-backend-user-1944058edd4f.json)"
+
+echo "Firebase service account secret created successfully!"
 
 # Apply Kubernetes configurations with local overlay (Kong Gateway)
 echo "Applying Kubernetes configuration with Kong Gateway..."
@@ -111,6 +131,7 @@ echo "=== API Endpoints (via Kong Gateway) ==="
 echo "Data Acquisition Health: http://dis.local:32080/api/acquisition/health"
 echo "Data Ingestion Health: http://dis.local:32080/api/ingestion/health"
 echo "Data Processing Health: http://dis.local:32080/api/processing/health"
+echo "User Service Health: http://dis.local:32080/api/user/health"
 echo "Real-time Metrics: http://dis.local:32080/api/ingestion/internal/metrics/realtime"
 echo ""
 echo "=== Testing API Gateway ==="
@@ -121,6 +142,7 @@ echo "\nTesting service endpoints through Kong Gateway..."
 curl -s http://dis.local:32080/api/acquisition/health && echo " - Data Acquisition service is accessible!"
 curl -s http://dis.local:32080/api/ingestion/health && echo " - Data Ingestion service is accessible!"
 curl -s http://dis.local:32080/api/processing/health && echo " - Data Processing service is accessible!"
+curl -s http://dis.local:32080/api/user/health && echo " - User service is accessible!"
 
 echo "\n=== Deployment Complete ==="
 echo "Your DIS Platform is now running with Kong API Gateway!"

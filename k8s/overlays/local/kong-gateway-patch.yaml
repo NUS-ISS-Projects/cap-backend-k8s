@@ -1,77 +1,96 @@
-# Local overlay for Kong Gateway configuration
+# Local overlay for Kong Gateway configuration with Firebase JWT
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kong-config
+  name: kong-config-firebase
 data:
   kong.yml: |
     _format_version: "3.0"
     _transform: true
     
     services:
+    # Data Ingestion Service
     - name: data-ingestion-service
       url: http://data-ingestion-service:8080
       routes:
-      - name: ingestion-health
+      # Health endpoint - NO authentication
+      - name: data-ingestion-health
         paths:
         - /api/ingestion/health
         strip_path: false
-      - name: ingestion-metrics
+      # All other ingestion endpoints - WITH authentication
+      - name: data-ingestion-protected
         paths:
-        - /api/ingestion/internal/metrics/realtime
+        - /api/ingestion
         strip_path: false
-    
+        plugins:
+        - name: jwt-firebase
+          config:
+            firebase_project_id: "cap-backend-user"
+        
+    # Data Processing Service
     - name: data-processing-service
       url: http://data-processing-service:8080
       routes:
-      - name: processing-health
+      # Health endpoint - NO authentication
+      - name: data-processing-health
         paths:
         - /api/processing/health
         strip_path: false
-    
+      # All other processing endpoints - WITH authentication
+      - name: data-processing-protected
+        paths:
+        - /api/processing
+        strip_path: false
+        plugins:
+        - name: jwt-firebase
+          config:
+            firebase_project_id: "cap-backend-user"
+        
+    # Data Acquisition Service
     - name: data-acquisition-service
       url: http://data-acquisition-service:8080
       routes:
-      - name: acquisition-health
+      # Health endpoint - NO authentication
+      - name: data-acquisition-health
         paths:
         - /api/acquisition/health
         strip_path: false
-      - name: acquisition-entity-states
+      # All other acquisition endpoints - WITH authentication
+      - name: data-acquisition-protected
         paths:
-        - /api/acquisition/entity-states
+        - /api/acquisition
         strip_path: false
-      - name: acquisition-fire-events
+        plugins:
+        - name: jwt-firebase
+          config:
+            firebase_project_id: "cap-backend-user"
+        
+    # User Service
+    - name: cap-user-service
+      url: http://cap-user-service:8080
+      routes:
+      # Health endpoint - NO authentication
+      - name: user-health
         paths:
-        - /api/acquisition/fire-events
+        - /api/user/health
         strip_path: false
-      - name: acquisition-collision-events
+      # Public auth endpoints - NO authentication
+      - name: user-auth-public
         paths:
-        - /api/acquisition/collision-events
+        - /api/auth/login
+        - /api/auth/register
         strip_path: false
-      - name: acquisition-detonation-events
+      # Protected user endpoints - WITH authentication
+      - name: user-protected
         paths:
-        - /api/acquisition/detonation-events
+        - /api/users
+        - /api/user-sessions
         strip_path: false
-      - name: acquisition-aggregate
-        paths:
-        - /api/acquisition/aggregate
-        strip_path: false
-      - name: acquisition-monthly
-        paths:
-        - /api/acquisition/monthly
-        strip_path: false
-      - name: acquisition-realtime
-        paths:
-        - /api/acquisition/realtime
-        strip_path: false
-      - name: acquisition-metrics
-        paths:
-        - /api/acquisition/metrics
-        strip_path: false
-      - name: acquisition-realtime-logs
-        paths:
-        - /api/acquisition/realtime/logs
-        strip_path: false
+        plugins:
+        - name: jwt-firebase
+          config:
+            firebase_project_id: "cap-backend-user"
     
     plugins:
     - name: cors
