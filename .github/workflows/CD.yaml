@@ -67,6 +67,13 @@ jobs:
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
 
+      # Step 8a: Create Firebase service account secret
+      - name: Create Firebase service account secret
+        run: |
+          kubectl create secret generic firebase-service-account \
+            --from-literal=service-account-b64='${{ secrets.FIREBASE_SA_B64_CI }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       # Step 9: Apply Kustomize for production
       - name: Apply Kubernetes Manifests for production
         if: contains(github.ref, '-release')

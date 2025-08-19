@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # Variables
-PROJECT_ID="third-hangout-460905-m7"
+PROJECT_ID="green-jet-469501-u7"
 CLUSTER_NAME="dis-cluster"
 ZONE="asia-southeast1"
 NAMESPACE="default"
 STATIC_IP_NAME="dis-ingress-ip"  # If you want to use a static IP for Ingress, extra charges apply
 K8S_MANIFEST_PATH="k8s/overlays/prod"
-SA_KEY_PATH="/home/ubuntu/cap_project/third-hangout-460905-m7-bd6e1a71c870.json"
+SA_KEY_PATH="/home/ngtianxun/cap_project/cap-backend-k8s/green-jet-469501-u7-d0edb03ef047.json"
 
 # Authenticate with GCP
 gcloud auth activate-service-account --key-file $SA_KEY_PATH
