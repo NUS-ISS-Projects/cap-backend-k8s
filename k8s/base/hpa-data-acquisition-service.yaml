@@ -9,7 +9,7 @@ spec:
     kind: Deployment
     name: data-acquisition-service # Matches the name of your Data Acquisition Service Deployment
   minReplicas: 1
-  maxReplicas: 3 # Adjust as needed
+  maxReplicas: 2 # Adjust as needed
   metrics:
   - type: Resource
     resource:
@@ -18,4 +18,4 @@ spec:
         type: Utilization
         # Target 70% of the requested CPU.
         # If request is 100m, HPA will scale up if average usage > 70m.
-        averageUtilization: 70
+        averageUtilization: 85
