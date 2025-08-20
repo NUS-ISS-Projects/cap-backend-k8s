@@ -1,0 +1,61 @@
+@startuml
+skinparam packageStyle rectangle
+
+actor "Client / UI" as UI
+
+' On-Premise components
+package "On-Premise Environment" {
+  [DIS Traffic Source\n(Simulated DIS PDUs)] as DIS_Source
+}
+
+' Cloud components
+package "Cloud Environment (GKE)" {
+  package "Ingestion & Messaging" {
+    [Data Ingestion Service\n(Cloud-hosted)] as Ingestion
+    [Message Broker\n(Kafka)] as Broker
+  }
+  
+  package "Processing & Analytics" {
+    [Processing Service\n(Stream/Batch ETL)] as Processing
+    [ML/Forecasting Service\n(Llama-based Models)] as MLService
+    [Database / Data Storage\n(PostgreSQL)] as Storage
+  }
+  
+  package "Data Acquisition" {
+    [Data Acquisition Service\n(Query Historical Data & Metrics)] as DataAcquire
+  }
+  
+  package "User Service" {
+    [User Service\n(Manages user data)] as UserService
+  }
+  
+  package "Ingress & Security" {
+    [Kong API Gateway\n(REST, TLS, Routing)] as KongGateway
+    [Authentication Service\n(Firebase Auth)] as AuthService
+  }
+}
+
+' Interactions between on-premise and cloud
+DIS_Source --> Ingestion : Send simulated DIS PDUs\n(Secure Channel: VPN/TLS)
+Ingestion --> Broker : Publish structured data
+Broker --> Processing : Stream data for processing
+Processing --> Storage : Write aggregated/clean data
+
+' Data Acquisition for historical queries and metrics
+Storage --> DataAcquire : Expose historical data via optimized queries
+DataAcquire --> KongGateway : Provide REST endpoints for historical data & aggregated metrics 
+
+' ML & API interaction
+Processing --> MLService : Provide aggregated data
+MLService --> Storage : Query historical & real-time data
+MLService --> KongGateway : Serve predictions/alerts\n(REST)
+
+' User Service Interaction
+UserService --> Storage : Access user data
+KongGateway --> UserService : Route user-related requests
+
+' Ingress and security flow
+KongGateway --> AuthService : Enforce authentication & security
+UI --> KongGateway : Consume historical data, metrics & predictions
+
+@enduml
