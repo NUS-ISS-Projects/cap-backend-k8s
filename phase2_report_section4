@@ -1,0 +1,239 @@
+4. Quality Attributes
+This section analyzes the architecture and implementation of the DIS (Distributed Interactive Simulation) data platform against key software quality attributes.
+4.1 Performance
+Performance in this system is defined by its ability to handle a high-volume stream of DIS PDU data, process it with low latency, and serve queries efficiently. The architecture is designed with several key principles to meet these requirements, including asynchronous processing, horizontal scalability, and optimized data handling.
+High-Throughput PDU Ingestion:
+UDP Listener for Low-Overhead Ingestion: The data-ingestion-service utilizes a UDP listener (UdpListenerService.java) to receive DIS PDUs. UDP is strategically chosen for its minimal overhead compared to TCP. In a high-volume, real-time environment like DIS, the speed of data reception is critical, and the stateless nature of UDP allows the service to handle a massive influx of packets without the latency of connection handshakes.
+Asynchronous and Non-Blocking Operations: The entire UDP listening and processing pipeline is fully asynchronous (@Async). This ensures that the main application thread is never blocked by network I/O. By immediately offloading packet handling to a separate thread pool, the service remains responsive and can continuously accept new data, preventing packet loss during traffic bursts.
+Efficient PDU Decoding and Serialization:
+PDUs are decoded using the edu.nps.moves.disutil.PduFactory, a library optimized for DIS protocol standards.
+A custom pduToJson method using StringBuilder is implemented for serializing PDU data into a JSON string before sending it to Kafka. This manual, direct-to-string approach avoids the reflection overhead common in generic JSON libraries (like Jackson or GSON), offering significant performance gains for the high-rate, well-defined structure of PDU data.
+DIS timestamps are corrected from a signed 32-bit integer to an unsigned 32-bit representation (stored as a long) to accurately reflect absolute DIS time, ensuring data integrity for time-sensitive analysis.
+Kafka as a High-Performance Buffer: Decoded PDUs are published to an Apache Kafka topic (dis-pdus) by the KafkaProducerService. Kafka serves as a distributed, resilient, and scalable buffer that decouples the ingestion stage from the processing stage. This is a critical architectural choice that allows the system to absorb unpredictable bursts of incoming PDUs, smooth out the load, and prevent data loss if downstream services are temporarily slow or unavailable.
+Real-time Ingestion Metrics for Observability: The DisMetricsTracker component provides real-time insights into ingestion performance. It uses ConcurrentLinkedDeque and AtomicLong for efficient, thread-safe tracking of PDU reception rates and timestamps without introducing lock contention, which is crucial for maintaining high performance.
+Efficient and Scalable Data Processing:
+Concurrent Kafka Consumption for Parallel Processing: The data-processing-service is configured with a @KafkaListener that runs with a concurrency of 3 (concurrency = "3" in KafkaConsumerConfig.java). This enables parallel processing of messages from different Kafka partitions, dramatically improving throughput. As the workload grows, this concurrency level can be increased, and more instances of the service can be deployed to scale out horizontally.
+Specialized PDU Parsers (Strategy Pattern): The service employs a PduParserFactory that selects a specific parser (e.g., EntityStatePduParser, FirePduParser) based on the PDU type. This implementation of the Strategy pattern is highly efficient, as it avoids complex conditional logic and allows for optimized, type-specific data extraction and transformation.
+Optimized Database Persistence: Processed data is persisted to a PostgreSQL database using Spring Data JPA. While standard JPA operations are used, the database schema is designed for efficient writes. For instance, using numeric primary keys and appropriate indexing on frequently queried columns (like timestamp) ensures that write operations remain fast even as the tables grow.
+Stateless Services and Horizontal Scalability (Kubernetes):
+Stateless Design: All core microservices (data-ingestion-service, data-processing-service, user-service, data-acquisition-service) are designed to be stateless. They do not store any session or transaction data locally, instead relying on external systems like Kafka and PostgreSQL for state management. This is a fundamental prerequisite for effective scaling.
+Horizontal Pod Autoscaler (HPA): Each service is managed by a Kubernetes Horizontal Pod Autoscaler (HPA). The HPAs are configured to monitor CPU utilization and automatically increase or decrease the number of running pods based on real-time load. This ensures that the system can dynamically adapt to changes in data volume, maintaining performance without manual intervention and optimizing resource usage.
+User Authentication and Authorization:
+Stateless JWT-Based Authentication: The user-service implements a stateless authentication mechanism using JSON Web Tokens (JWT). After a user successfully authenticates with their credentials, the service issues a signed JWT. This token is then sent with subsequent requests to prove identity. This approach is highly performant and scalable, as it eliminates the need for a server-side session store.
+Efficient Authorization with Spring Security: The service leverages Spring Security for robust and efficient authorization. Once a user's JWT is validated, their roles and permissions are loaded into the security context. This allows for fine-grained access control to be enforced at the API endpoint level with minimal overhead.
+Integration with Kong API Gateway: The Kong API Gateway works in tandem with the user-service. Kong can be configured to validate JWTs at the edge, offloading the initial authentication check from the user-service and protecting upstream services from unauthenticated traffic. This further enhances performance and security.
+
+Efficient Querying and Data Retrieval:
+Optimized Queries in Data Acquisition Service: The data-acquisition-service is responsible for serving data to clients. It contains optimized JPA queries and, where necessary, native SQL queries to perform efficient aggregations and time-series analysis directly in the database. This minimizes the amount of data that needs to be transferred and processed at the application layer.
+Kong API Gateway for Traffic Management: Kong acts as the single entry point for all external traffic. It handles routing, rate-limiting, and authentication, offloading these concerns from the backend services. This allows the services to focus on their core business logic and improves overall system security and performance.
+
+Optimized Query Response Time:
+The data-acquisition-service provides REST APIs for querying historical and aggregated PDU data stored in PostgreSQL.
+Repository methods like findByTimestampBetween in EntityStateRepository and FireEventRepository are used for time-range queries. The efficiency of these queries is heavily dependent on appropriate database indexing on the timestamp column of the entity_state_record and fire_event_record tables. Such indexing is a standard database optimization practice and crucial for achieving acceptable query performance, especially as the dataset grows.
+The /api/acquisition/metrics endpoint, handled by MetricsService.java, performs aggregations (total packets, average rate, peak load). Currently, this involves fetching lists of records and performing calculations in the application layer. For very large datasets or complex aggregations, this could be further optimized by leveraging native SQL queries or JPA Criteria API to perform aggregations directly at the database level.
+The /api/acquisition/realtime endpoint makes an HTTP call via RestTemplate to an internal endpoint in data-ingestion-service (/internal/metrics/realtime) to fetch live PDU ingestion metrics. This internal HTTP call should be low-latency due to in-cluster communication.
+Scalability through Kubernetes and HPA:
+The entire platform is containerized and deployed on Google Kubernetes Engine (GKE), a managed Kubernetes service. This microservices architecture allows for independent scaling of each service.
+Horizontal Pod Autoscalers (HPAs) are configured for data-ingestion-service, data-processing-service, data-acquisition-service and cap-user-service. These HPAs are set to scale the number of pods for each service (e.g., minReplicas: 1, maxReplicas: 2) based on CPU utilization, targeting 70 - 85% of the requested CPU, and 90% of mem. This allows the system to dynamically adjust its capacity based on processing load.
+
+Figure 4.1.a: HPA Scaling
+Resource Management: Kubernetes Deployments for each service define CPU and memory requests and limits (e.g., requests: cpu: "100m", limits: cpu: "500m"). This ensures pods are allocated necessary resources and prevents resource starvation or over-consumption, contributing to predictable performance.
+
+Figure 4.1.a: Resource limits
+Scalable Backend Infrastructure: Kafka, Zookeeper and Postgres are deployed as StatefulSets. While currently configured with single replicas for simplicity, their StatefulSet nature and Kafka's inherent distributed design allow for horizontal scaling to handle increased message throughput in a production environment. PostgreSQL can also be scaled (e.g., read replicas), though the current deployment uses a single instance.
+
+Figure 4.1.b: Stateful sets
+Query Response Time 
+Database Querying: The data-acquisition-service uses Spring Data JPA repositories to query the PostgreSQL database. Performance for time-based queries relies heavily on database indexing on the timestamp column of the entity_state_record and fire_event_record tables. While not explicitly defined in the provided code, such indexing is a critical prerequisite for meeting performance goals with large datasets.
+Metrics Aggregation: The /api/acquisition/metrics endpoint calculates aggregations by fetching records from the database and processing them in the application layer. For extremely large time windows, this could be optimized by pushing aggregation logic down to the database using custom native queries.
+
+Figure 4.1.c: Aggregated metrics
+Potential Performance Enhancements:
+Database Optimizations: Ensure comprehensive indexing on PostgreSQL tables, especially on timestamp columns and any other frequently queried fields. Analyze query plans for critical queries to identify and resolve bottlenecks.
+Batch Operations: For high-volume writes to PostgreSQL in data-processing-service, explicitly configure JDBC batching or leverage Spring Data JPA's batch capabilities to reduce database round trips.
+In-Memory Caching: For frequently accessed, relatively static data or common query results in data-acquisition-service, consider implementing a caching layer (e.g., using Redis or Caffeine) to reduce database load and improve response times.
+Advanced Kafka Consumer Tuning: Fine-tune Kafka consumer properties (e.g., fetch.min.bytes, fetch.max.wait.ms, max.poll.records) in data-processing-service for optimal throughput based on message size and processing characteristics.
+Connection Pooling: Verify and optimize database connection pool settings for each service to ensure efficient connection management under concurrent load.
+4.2 Availability
+Availability refers to the system's ability to remain operational and accessible over time, minimizing downtime and ensuring resilience to failures.
+Mechanisms and Design Choices for Availability:
+Redundancy and Fault Tolerance (Kubernetes-Native):
+Pod Replication & Self-Healing: The application services (data-ingestion, data-processing, data-acquisition) are deployed as Kubernetes Deployments. Kubernetes automatically maintains the desired number of pod replicas. If a pod or the node it's running on fails, Kubernetes will reschedule and restart the pod on a healthy node.
+Horizontal Pod Autoscaling (HPA): HPAs not only manage performance but also contribute to availability by ensuring a minReplicas count (currently 1) is always running and can scale up to maxReplicas (currently 3) to handle load or transient issues affecting a single pod.
+Health Probes: All application Deployments are configured with Liveness and Readiness probes that target their respective /health API endpoints.
+Readiness Probes (readinessProbe): Ensure that network traffic is only routed to pods that have fully started and are ready to serve requests.
+Liveness Probes (livenessProbe): Allow Kubernetes to detect and automatically restart unresponsive or deadlocked application instances.
+StatefulSet for Backend Services: Kafka and Zookeeper are deployed as StatefulSets. While currently single-replica, StatefulSets are designed for stateful applications, providing stable network identifiers and ordered, graceful deployment and scaling, which is important for these distributed systems.
+
+Figure 4.2.a: HPA services
+
+Figure 4.2.b: Probes for healthiness check
+Application Fallbacks: The RealTimeMetricsService includes a try-catch block and a fallback mechanism. If it fails to connect to the data-ingestion-service for real-time metrics, it logs the error and returns a default RealTimeMetrics object instead of failing the request, improving the resilience of the /api/acquisition/realtime endpoint.
+
+Data Pipeline Resilience:
+Kafka as a Durable Buffer: Apache Kafka acts as a persistent message queue between the data-ingestion-service and the data-processing-service. If the data-processing-service instances become temporarily unavailable, PDUs published by the data-ingestion-service are retained in Kafka topics. Once the processing service recovers, it can resume consuming messages from where it left off (based on consumer group offsets), preventing data loss during transient outages.
+Fallback Mechanisms: The RealTimeMetricsService within data-acquisition-service implements error handling when fetching metrics from data-ingestion-service. If the remote call fails (e.g., due to a network issue or data-ingestion-service being down), it logs the error and returns a default/empty RealTimeMetrics object instead of failing the entire request, ensuring the /api/acquisition/realtime endpoint remains partially available.
+
+Zero-Downtime Deployments:
+Rolling Updates: The Kubernetes Deployments for application services are configured with the RollingUpdate strategy (strategy: type: RollingUpdate). This ensures that when a new version of a service is deployed (e.g., via the CI/CD pipeline), Kubernetes updates pods incrementally—creating new pods and terminating old ones gradually—thus maintaining service availability during the update process.
+
+Figure 4.2.c: Rolling updates
+CI/CD Rollout Verification: The GitHub Actions CD pipeline includes a "Check Rollout Status for DIS Platform" step that uses kubectl rollout status to verify that deployments and statefulsets have successfully completed their updates and new pods are ready before marking the deployment as successful. If a rollout fails, a subsequent step attempts an automated rollback.
+
+Figure 4.2.d: Rolling update status
+		
+Potential Availability Enhancements for Production:
+Persistent Storage for Stateful Services:
+PostgreSQL: The current PostgreSQL Deployment uses an emptyDir volume for storage, which is ephemeral and means data is lost if the pod is rescheduled. For production, this must be replaced with a PersistentVolumeClaim (PVC) backed by durable, network-attached storage (e.g., Google Persistent Disk on GKE).
+Kafka & Zookeeper: Similarly, Kafka and Zookeeper StatefulSets need to be configured with PVCs for their data directories to ensure data persistence across pod restarts and rescheduling.
+High Availability for Backend Services:
+PostgreSQL: Implement a high-availability PostgreSQL setup, such as using a managed cloud database service (e.g., Cloud SQL with HA configuration) or deploying a PostgreSQL cluster with replication (e.g., using Patroni).
+Kafka & Zookeeper: Increase the replica count for Kafka brokers and Zookeeper instances (e.g., to 3 or 5 replicas) and configure them for clustered operation to tolerate node failures. This includes setting appropriate replication factors for Kafka topics.
+Increased Replica Counts: For stateless application services, increase the minReplicas in HPAs and potentially the default replicas in Deployments (e.g., to 2 or 3) for production environments to ensure at least two instances are always running, providing immediate failover capability.
+Cross-Zone/Region Deployments (Advanced): For very high availability requirements, consider deploying the GKE cluster and critical services across multiple zones or even regions, along with global load balancing.
+4.3 Security
+Security is addressed through a combination of planned architecture, infrastructure configuration, and CI/CD practices.
+Authentication and Access Control 
+
+
+Designed for JWT: The system architecture explicitly includes an Authentication Service (JWT, RBAC) that integrates with the Kubernetes Ingress. The design intent is for the Ingress to act as a gateway, forwarding validated requests to the backend services.
+Implementation Status: It's important to note that the provided application code for the data platform services does not yet contain Spring Security configurations to validate JWTs or enforce role-based access control. Implementing this would be a critical next step to fully realize the designed security model. Can be done in phase 2.
+Internal Endpoints: An internal-only endpoint (/internal/metrics/realtime) is used for service-to-service communication to fetch real-time metrics, which is not exposed via the main Ingress.
+Secure Communication & Data 
+
+
+TLS/HTTPS: The Ingress YAML uses spec.ingressClassName: "gce", allowing it to be easily integrated with Google-managed SSL certificates for secure HTTPS communication.
+
+            Figure 4.3.a: Ingess
+Secure Ingestion Channel: "Secure Channel: VPN/TLS" for the initial PDU transmission from the on-premise source to the cloud, protecting data at the network boundary. Can be done in phase 2.
+Internal Traffic: Communication between services inside the Kubernetes cluster (e.g., service-to-Kafka, service-to-Postgres) is typically unencrypted, which is a common practice that relies on the security of the private cluster network. For higher security requirements, network policies and service mesh technologies could enforce stricter controls and mTLS. Can be done in phase 2.
+Secrets Management 
+
+
+GitHub Actions Secrets: The CI/CD pipeline securely manages sensitive credentials like GCLOUD_AUTH and GHCR_TOKEN using GitHub Actions secrets.
+
+            Figure 4.3.b: Secret management
+Kubernetes Secrets: A Kubernetes secret named ghcr-secret is dynamically generated during the CI/CD pipeline to allow GKE to pull container images securely from the GitHub Container Registry. Database credentials are passed to pods as environment variables defined in the deployment manifests.
+
+     Figure 4.3.c: Github repo secrets
+Proactive Security Scanning 
+
+
+The CI/CD pipeline includes a DAST (Dynamic Application Security Testing) job that runs after a successful staging deployment. It uses OWASP ZAP to perform a baseline scan of the application's public-facing URL and uploads the scan report as a build artifact, helping to proactively identify common web vulnerabilities.
+
+Figure 4.3.d: DAST scanning
+Potential Security Enhancements:
+Implement API Authentication & Authorization: Fully implement the designed "Authentication Service" and integrate JWT validation and RBAC within each Spring Boot service using Spring Security to protect all API endpoints.
+TLS for Ingress: Ensure TLS is explicitly configured and enforced for the GKE Ingress resource, using Google-managed certificates or custom certificates, to secure all external HTTP traffic.
+Secure Internal Communication (mTLS): For enhanced security within the cluster, consider implementing mutual TLS (mTLS) for service-to-service communication (e.g., using a service mesh like Istio or Linkerd). Also, configure SSL/TLS for Kafka and PostgreSQL connections.
+NetworkPolicies: Implement Kubernetes NetworkPolicies to define fine-grained network traffic rules between pods, restricting communication to only what is necessary (principle of least privilege).
+Regular Vulnerability Scanning: Implement regular scanning of container images (e.g., using Google Container Registry vulnerability scanning or tools like Trivy/Clair) and application dependencies for known vulnerabilities.
+Principle of Least Privilege for Service Accounts: Ensure Kubernetes service accounts used by pods have the minimum necessary RBAC permissions.
+Input Validation: Enhance input validation at API gateways and within services to protect against common injection attacks and malformed data.
+4.4 Extensibility and Maintainability
+The system is designed to be easy to understand, modify, and extend with new functionality over time.
+Standardized Technology Stack and Tooling:
+The use of Spring Boot (Java) provides a widely adopted and well-documented framework for building microservices.
+Apache Kafka for messaging and PostgreSQL for data storage are industry-standard, robust technologies with extensive community support.
+Docker for containerization and Kubernetes (GKE) for orchestration are de-facto standards for cloud-native applications.
+Git/GitHub for version control and GitHub Actions for CI/CD are common and powerful tools.
+Modular Microservice Architecture The system's decomposition into independent services (data-ingestion, data-processing, data-acquisition) is the primary driver of extensibility and maintainability. This allows:
+
+
+Independent Development & Deployment: Teams can work on, test, and deploy services independently.
+Technology Flexibility: Each service could, in theory, use a different technology stack if needed.
+Clear Boundaries: Responsibilities are clearly separated (e.g., ingestion handles UDP and Kafka publishing; processing handles Kafka consumption and DB writes; acquisition handles API querying).
+
+Figure 4.4.a: Microservice repos
+Extensible Code and Design Patterns
+
+
+Factory Pattern: The data-processing-service uses a PduParserFactory to decouple the main processing logic from the specifics of how each PDU type is handled. To add support for a new PDU type (e.g., CollisionPdu), a developer only needs to create a new CollisionPduParser class that implements the PduParser interface and register it with the factory. This is a highly extensible design that requires minimal changes to existing code.
+
+Figure 4.4.b: Factory pattern I
+Service Layer Abstraction: Logic is separated into service layers (e.g., MetricsService, RealTimeMetricsService) that handle specific business concerns, making the controllers cleaner and the code easier to maintain and test.
+
+Figure 4.4.b: Factory pattern II
+Configuration and Automation
+
+
+Externalized Configuration: Key values like database URLs, Kafka addresses, and topic names are externalized in application.properties and Kubernetes environment variables, allowing the application to be promoted through different environments (dev, staging, prod) without code changes.
+Infrastructure as Code (IaC): All Kubernetes resources (Deployments, Services, HPAs, Ingress) are defined as YAML files and managed with Kustomize, promoting version-controlled, repeatable, and maintainable infrastructure deployments.
+
+Figure 4.4.c: Deployment via Kustomize
+CI/CD Automation: The entire deployment process is automated through a GitHub Actions pipeline. This reduces the risk of manual error, ensures consistency, and improves the speed at which new features and fixes can be delivered.
+
+Figure 4.4.d: CI pipeline
+
+Figure 4.4.e: CD pipeline
+
+
+
+
+Figure 4.4.f: GKE Metrics
+
+Figure 4.4.g: Jacoco code coverage
+
+Figure 4.4.h: Sonarcloud scan
+Testability 
+
+
+The project includes a suite of unit and integration tests for its services, demonstrating a commitment to code quality.
+Controller Tests: @WebMvcTest is used to test the API layer in isolation by mocking service and repository dependencies (e.g., HistoricalDataControllerTest).
+Service Tests: Service logic is tested with mock repositories (e.g., MetricsServiceTest).
+Integration Tests: Testcontainers are used to spin up a real PostgreSQL database for integration testing (DataAcquisitionApplicationTests), ensuring the application works correctly with a live database.
+
+Figure 4.4.i: Unit tests
+Service/Component
+Test Class
+Number of Unit Tests
+Data Acquisition
+DataAcquisitionApplicationTests
+3
+RealTimeMetricsServiceTest
+3
+MetricsServiceTest
+8
+HistoricalDataControllerTest
+9
+Data Ingestion
+DisApplicationTests
+1
+UdpListenerInitializerTest
+1
+DisMetricsTrackerTest
+5
+UdpListenerServiceTest
+3
+KafkaProducerServiceTest
+2
+InternalMetricsControllerTest
+1
+HealthControllerTest
+1
+Data Processing
+DisApplicationTests
+1
+PduParserFactoryTest
+4
+FirePduParserTest
+3
+DefaultPduParserTest
+1
+PduProcessingServiceTest
+6
+EntityStatePduParserTest
+4
+Total
+
+
+46
+
+
+Potential Maintainability & Extensibility Enhancements:
+Standardize JSON Serialization: Consider consistently using Jackson ObjectMapper (already present in data-processing-service) across all services for JSON serialization/deserialization, including in data-ingestion-service's pduToJson method. While StringBuilder can be performant, a standard library offers better maintainability for more complex or evolving JSON structures.
+API Versioning: As the API evolves, implement a clear API versioning strategy (e.g., URI versioning like /api/v2/acquisition/... or header-based versioning) to manage changes gracefully without breaking existing clients.
+Centralized Logging and Distributed Tracing: While logging is present, for a microservices architecture, integrating a centralized logging solution (e.g., ELK Stack, Splunk, or Google Cloud Logging) and distributed tracing (e.g., OpenTelemetry, Jaeger, Zipkin) would significantly improve the ability to debug issues that span multiple services and understand request flows.
+Shared DTOs/Libraries: For Data Transfer Objects (DTOs) like RealTimeMetrics (used by both data-ingestion and data-acquisition) or common utility functions (like timestamp converters in MetricsService), consider creating shared Java libraries/modules. This would reduce code duplication and ensure consistency.
+Event Sourcing for PDU History (Advanced Extensibility): For more complex historical querying or auditing capabilities, consider evolving the data-processing-service to store raw PDU events using an event sourcing pattern, in addition to the relational records.
+Comprehensive Documentation: Expand internal code documentation (JavaDocs) and maintain up-to-date API documentation (e.g., using OpenAPI/Swagger).
