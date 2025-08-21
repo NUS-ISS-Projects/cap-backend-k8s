@@ -1,0 +1,16 @@
+# Kustomize patch to change storage class for Minikube compatibility
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  # Only patching volumeClaimTemplates - other fields inherited from base
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: standard  # Changed from standard-rwo for Minikube
+      resources:
+        requests:
+          storage: 20Gi

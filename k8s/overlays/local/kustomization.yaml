@@ -7,3 +7,4 @@ patches:
   - path: data-acquisition-service-deployment-patch.yaml
   - path: cap-user-service-deployment-patch.yaml
   - path: kong-gateway-patch.yaml
+  - path: postgres-statefulset-patch.yaml
