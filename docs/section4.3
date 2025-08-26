@@ -1,0 +1,39 @@
+4.3 Security
+Security is addressed through a combination of planned architecture, infrastructure configuration, and CI/CD practices.
+Authentication and Access Control 
+
+
+Kong Gateway Firebase JWT Authentication: The system implements comprehensive authentication through Kong API Gateway with a custom Firebase JWT plugin. Kong validates Firebase JWTs at the edge, automatically fetching and rotating Firebase public keys for signature verification. The gateway implements selective authentication where health endpoints remain public while data endpoints require valid Firebase tokens.
+Spring Security Implementation: The cap-user-service includes full Spring Security configuration with Firebase JWT validation through SecurityConfig.java and FirebaseTokenFilter. Upon successful JWT validation, Kong forwards user context via headers (X-User-ID, X-User-Email, X-Consumer-ID) to downstream services, completely offloading authentication processing from backend services.
+Internal Endpoints: An internal-only endpoint (/internal/metrics/realtime) is used for service-to-service communication to fetch real-time metrics, which is not exposed via Kong Gateway. This endpoint is used by the RealTimeMetricsService for secure data-acquisition to data-ingestion communication.
+Secure Communication & Data 
+
+
+TLS/HTTPS: The Kong Gateway LoadBalancer service is configured for HTTPS termination with both HTTP (port 80) and HTTPS (port 443) support in production environments. This provides secure external communication with SSL/TLS encryption.
+
+            Figure 4.3.a: Ingess
+Secure Ingestion Channel: "Secure Channel: VPN/TLS" for the initial PDU transmission from the on-premise source to the cloud, protecting data at the network boundary. Can be done in phase 2.
+Internal Traffic: Communication between services inside the Kubernetes cluster (e.g., service-to-Kafka, service-to-Postgres) is typically unencrypted, which is a common practice that relies on the security of the private cluster network. For higher security requirements, network policies and service mesh technologies could enforce stricter controls and mTLS. Can be done in phase 2.
+Secrets Management 
+
+
+GitHub Actions Secrets: The CI/CD pipeline securely manages sensitive credentials like GCLOUD_AUTH and GHCR_TOKEN using GitHub Actions secrets.
+
+            Figure 4.3.b: Secret management
+Kubernetes Secrets: Multiple secrets are dynamically generated during the CI/CD pipeline including firebase-service-account for Firebase authentication and ghcr-secret for GitHub Container Registry access. Database credentials are passed to pods as environment variables defined in the deployment manifests.
+
+     Figure 4.3.c: Github repo secrets
+Proactive Security Scanning 
+
+
+The CI/CD pipeline includes a DAST (Dynamic Application Security Testing) job that runs after a successful staging deployment. It uses OWASP ZAP to perform a baseline scan of the application's public-facing URL and uploads the scan report as a build artifact, helping to proactively identify common web vulnerabilities.
+
+Figure 4.3.d: DAST scanning
+Potential Security Enhancements:
+Enhanced RBAC Implementation: Extend role-based access control beyond the current user service to include fine-grained permissions for data access and administrative functions.
+Advanced Authentication Features: Implement additional authentication methods such as API keys for service-to-service communication and enhanced session management.
+Secure Internal Communication (mTLS): For enhanced security within the cluster, consider implementing mutual TLS (mTLS) for service-to-service communication (e.g., using a service mesh like Istio or Linkerd). Also, configure SSL/TLS for Kafka and PostgreSQL connections.
+NetworkPolicies: Implement Kubernetes NetworkPolicies to define fine-grained network traffic rules between pods, restricting communication to only what is necessary (principle of least privilege).
+Regular Vulnerability Scanning: Implement regular scanning of container images (e.g., using Google Container Registry vulnerability scanning or tools like Trivy/Clair) and application dependencies for known vulnerabilities.
+Principle of Least Privilege for Service Accounts: Ensure Kubernetes service accounts used by pods have the minimum necessary RBAC permissions.
+Input Validation: Enhance input validation at API gateways and within services to protect against common injection attacks and malformed data.

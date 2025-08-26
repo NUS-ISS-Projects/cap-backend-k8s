@@ -1,0 +1,131 @@
+4.4 Extensibility and Maintainability
+The system is designed to be easy to understand, modify, and extend with new functionality over time.
+Standardized Technology Stack and Tooling:
+The use of Spring Boot (Java) provides a widely adopted and well-documented framework for building microservices.
+Apache Kafka for messaging and PostgreSQL for data storage are industry-standard, robust technologies with extensive community support.
+Docker for containerization and Kubernetes (GKE) for orchestration are de-facto standards for cloud-native applications.
+Kong API Gateway provides enterprise-grade API management with custom plugin support for Firebase JWT authentication.
+Git/GitHub for version control and GitHub Actions for CI/CD are common and powerful tools.
+Modular Microservice Architecture The system's decomposition into independent services (data-ingestion, data-processing, data-acquisition, cap-user-service) with Kong Gateway as the API management layer is the primary driver of extensibility and maintainability. This allows:
+
+
+Independent Development & Deployment: Teams can work on, test, and deploy services independently with Kong Gateway providing unified API management.
+Technology Flexibility: Each service could, in theory, use a different technology stack if needed, while Kong Gateway handles cross-cutting concerns like authentication and rate limiting.
+Clear Boundaries: Responsibilities are clearly separated (e.g., ingestion handles UDP and Kafka publishing; processing handles Kafka consumption and DB writes; acquisition handles API querying; user service manages authentication; Kong Gateway handles API routing and security).
+
+Figure 4.4.a: Microservice repos
+Extensible Code and Design Patterns
+
+
+Factory Pattern: The data-processing-service uses a PduParserFactory to decouple the main processing logic from the specifics of how each PDU type is handled. To add support for a new PDU type (e.g., CollisionPdu), a developer only needs to create a new CollisionPduParser class that implements the PduParser interface and register it with the factory. This is a highly extensible design that requires minimal changes to existing code.
+
+Figure 4.4.b: Factory pattern I
+Service Layer Abstraction: Logic is separated into service layers (e.g., MetricsService, RealTimeMetricsService) that handle specific business concerns, making the controllers cleaner and the code easier to maintain and test.
+
+Figure 4.4.b: Factory pattern II
+Configuration and Automation
+
+
+Externalized Configuration: Key values like database URLs, Kafka addresses, topic names, and Firebase authentication settings are externalized in application.properties and Kubernetes environment variables, allowing the application to be promoted through different environments (dev, staging, prod) without code changes.
+Infrastructure as Code (IaC): All Kubernetes resources (Deployments, Services, HPAs, Kong Gateway, LoadBalancer) are defined as YAML files and managed with Kustomize overlays for environment-specific configurations, promoting version-controlled, repeatable, and maintainable infrastructure deployments.
+Environment-Specific Configurations: Kong Gateway configurations are customized per environment (local, staging, production) with different replica counts, resource limits, and security policies.
+
+Figure 4.4.c: Deployment via Kustomize
+CI/CD Automation: The entire deployment process is automated through a GitHub Actions pipeline. This reduces the risk of manual error, ensures consistency, and improves the speed at which new features and fixes can be delivered.
+
+Figure 4.4.d: CI pipeline
+
+Figure 4.4.e: CD pipeline
+
+
+
+
+Figure 4.4.f: GKE Metrics
+
+Figure 4.4.g: Jacoco code coverage
+
+Figure 4.4.h: Sonarcloud scan
+Testability 
+
+
+The project includes a suite of unit and integration tests for its services, demonstrating a commitment to code quality.
+Controller Tests: @WebMvcTest is used to test the API layer in isolation by mocking service and repository dependencies (e.g., HistoricalDataControllerTest).
+Service Tests: Service logic is tested with mock repositories (e.g., MetricsServiceTest).
+Integration Tests: Testcontainers are used to spin up a real PostgreSQL database for integration testing (DataAcquisitionApplicationTests), ensuring the application works correctly with a live database.
+
+Figure 4.4.i: Unit tests
+Service/Component
+Test Class
+Number of Unit Tests
+Data Acquisition
+DataAcquisitionApplicationTests
+3
+RealTimeMetricsServiceTest
+3
+MetricsServiceTest
+8
+HistoricalDataControllerTest
+9
+Data Ingestion
+DisApplicationTests
+1
+UdpListenerInitializerTest
+1
+DisMetricsTrackerTest
+5
+UdpListenerServiceTest
+3
+KafkaProducerServiceTest
+2
+InternalMetricsControllerTest
+1
+HealthControllerTest
+1
+Data Processing
+DisApplicationTests
+1
+PduParserFactoryTest
+4
+FirePduParserTest
+3
+DefaultPduParserTest
+1
+PduProcessingServiceTest
+6
+EntityStatePduParserTest
+4
+User Service
+UserServiceApplicationTests
+1
+UserServiceTest
+2
+UserSessionServiceTest
+1
+UserProfileControllerTest
+1
+AuthControllerTest
+2
+FirebaseTokenFilterTest
+1
+UserTest
+1
+UserSessionTest
+1
+LastSessionTest
+1
+LoginRequestTest
+1
+Total
+
+
+58
+
+
+Potential Maintainability & Extensibility Enhancements:
+Standardize JSON Serialization: Consider consistently using Jackson ObjectMapper (already present in data-processing-service) across all services for JSON serialization/deserialization, including in data-ingestion-service's pduToJson method. While StringBuilder can be performant, a standard library offers better maintainability for more complex or evolving JSON structures.
+API Versioning: As the API evolves, implement a clear API versioning strategy through Kong Gateway (e.g., URI versioning like /api/v2/acquisition/... or header-based versioning) to manage changes gracefully without breaking existing clients.
+Kong Plugin Extensibility: Leverage Kong's plugin ecosystem to add new cross-cutting concerns like advanced analytics, custom authentication methods, or API transformation without modifying backend services.
+Centralized Logging and Distributed Tracing: While logging is present, for a microservices architecture, integrating a centralized logging solution (e.g., ELK Stack, Splunk, or Google Cloud Logging) and distributed tracing (e.g., OpenTelemetry, Jaeger, Zipkin) would significantly improve the ability to debug issues that span multiple services and understand request flows.
+Shared DTOs/Libraries: For Data Transfer Objects (DTOs) like RealTimeMetrics (used by both data-ingestion and data-acquisition) or common utility functions (like timestamp converters in MetricsService), consider creating shared Java libraries/modules. This would reduce code duplication and ensure consistency.
+Event Sourcing for PDU History (Advanced Extensibility): For more complex historical querying or auditing capabilities, consider evolving the data-processing-service to store raw PDU events using an event sourcing pattern, in addition to the relational records.
+Comprehensive Documentation: Expand internal code documentation (JavaDocs) and maintain up-to-date API documentation (e.g., using OpenAPI/Swagger).
