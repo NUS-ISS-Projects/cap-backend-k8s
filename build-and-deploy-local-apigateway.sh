@@ -71,6 +71,10 @@ docker build -t cap-backend-data-acquisition:latest .
 cd ../cap-user-service
 docker build -t cap-user-service:latest .
 
+echo "Building cap-pdu-prediction service..."
+cd ../cap-pdu-prediction
+docker build -t cap-pdu-prediction:latest .
+
 # Return to k8s directory
 cd ../cap-backend-k8s
 
@@ -132,6 +136,7 @@ echo "Data Acquisition Health: http://dis.local:32080/api/acquisition/health"
 echo "Data Ingestion Health: http://dis.local:32080/api/ingestion/health"
 echo "Data Processing Health: http://dis.local:32080/api/processing/health"
 echo "User Service Health: http://dis.local:32080/api/user/health"
+echo "Prediction Service Health: http://dis.local:32080/api/prediction/health"
 echo "Real-time Metrics: http://dis.local:32080/api/ingestion/internal/metrics/realtime"
 echo ""
 echo "=== Testing API Gateway ==="
@@ -143,6 +148,7 @@ curl -s http://dis.local:32080/api/acquisition/health && echo " - Data Acquisiti
 curl -s http://dis.local:32080/api/ingestion/health && echo " - Data Ingestion service is accessible!"
 curl -s http://dis.local:32080/api/processing/health && echo " - Data Processing service is accessible!"
 curl -s http://dis.local:32080/api/user/health && echo " - User service is accessible!"
+curl -s http://dis.local:32080/api/prediction/health && echo " - Prediction service is accessible!"
 
 echo "\n=== Deployment Complete ==="
 echo "Your DIS Platform is now running with Kong API Gateway!"
