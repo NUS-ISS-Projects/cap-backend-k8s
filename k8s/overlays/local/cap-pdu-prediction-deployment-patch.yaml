@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cap-pdu-prediction-service
+spec:
+  template:
+    spec:
+      imagePullSecrets: []
+      containers:
+      - name: cap-pdu-prediction-service
+        image: cap-pdu-prediction:latest
+        imagePullPolicy: Never
