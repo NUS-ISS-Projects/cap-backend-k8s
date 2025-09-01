@@ -428,6 +428,25 @@ data:
         - name: jwt-firebase
           config:
             firebase_project_id: "cap-backend-user"
+        
+    # PDU Prediction Service
+    - name: cap-pdu-prediction-service
+      url: http://cap-pdu-prediction-service:5001
+      routes:
+      # Health endpoint - NO authentication
+      - name: prediction-health
+        paths:
+        - /api/prediction/health
+        strip_path: false
+      # Prediction endpoints - WITH authentication
+      - name: prediction-protected
+        paths:
+        - /api/prediction
+        strip_path: false
+        plugins:
+        - name: jwt-firebase
+          config:
+            firebase_project_id: "cap-backend-user"
 
     # No consumers needed - Firebase JWT plugin handles verification directly
     consumers: []

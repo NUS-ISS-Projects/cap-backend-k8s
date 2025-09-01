@@ -19,7 +19,10 @@ resources:
   - hpa-data-ingestion-service.yaml
   - hpa-data-processing-service.yaml
   - hpa-data-acquisition-service.yaml
-  - hpa-cap-user-service.yaml 
+  - hpa-cap-user-service.yaml
+  - cap-pdu-prediction-deployment.yaml
+  - cap-pdu-prediction-service.yaml
+  - hpa-cap-pdu-prediction-service.yaml 
 
 secretGenerator:
   # GHCR Docker Registry secret

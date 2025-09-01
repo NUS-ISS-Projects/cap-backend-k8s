@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cap-pdu-prediction-service
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  revisionHistoryLimit: 5  # Retain 5 revisions for rollback
+  selector:
+    matchLabels:
+      app: cap-pdu-prediction-service
+  template:
+    metadata:
+      labels:
+        app: cap-pdu-prediction-service
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+      - name: cap-pdu-prediction-service
+        image: ghcr.io/nus-iss-projects/cap-pdu-prediction/cap-pdu-prediction:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5001
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5001
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        env:
+          - name: FLASK_ENV
+            value: "production"
+          - name: PYTHONUNBUFFERED
+            value: "1"
