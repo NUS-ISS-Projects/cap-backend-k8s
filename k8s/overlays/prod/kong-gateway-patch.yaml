@@ -110,7 +110,25 @@ data:
         - name: jwt-firebase
           config:
             firebase_project_id: "cap-backend-user"
-    
+        
+    # Data Acquisition Service
+    - name: data-acquisition-service
+      url: http://data-acquisition-service.default.svc.cluster.local:8080
+      routes:
+      # Health endpoint - NO authentication
+      - name: data-acquisition-health
+        paths:
+        - /api/acquisition/health
+        strip_path: false
+      # All other acquisition endpoints - WITH authentication
+      - name: data-acquisition-protected
+        paths:
+        - /api/acquisition
+        strip_path: false
+        plugins:
+        - name: jwt-firebase
+          config:
+            firebase_project_id: "cap-backend-user"
         
     # User Service
     - name: cap-user-service
