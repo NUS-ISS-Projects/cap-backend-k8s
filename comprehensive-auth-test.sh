@@ -86,8 +86,8 @@ NC='\033[0m' # No Color
 # Configuration
 # Get Minikube IP dynamically for local testing
 MINIKUBE_IP=$(minikube ip 2>/dev/null || echo "localhost")
-# KONG_URL="http://${MINIKUBE_IP}:32080"  # Local Minikube
-KONG_URL="http://34.87.65.17:8000"  # GKE external IP
+KONG_URL="http://${MINIKUBE_IP}:32080"  # Local Minikube
+# KONG_URL="http://34.87.65.17:8000"  # GKE external IP
 
 # Generate unique test identifiers for each run
 TEST_RUN_ID="$(date +%s)_$(shuf -i 1000-9999 -n 1)"
@@ -411,6 +411,11 @@ HEALTH_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" "$KONG_URL/api/processing/h
 HEALTH_STATUS=$(echo "$HEALTH_RESPONSE" | tail -n1 | cut -d: -f2)
 print_result "Data Processing Health" "$HEALTH_STATUS" "200" "$(echo "$HEALTH_RESPONSE" | head -n -1)"
 
+# Prediction Service Health
+HEALTH_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" "$KONG_URL/api/prediction/health")
+HEALTH_STATUS=$(echo "$HEALTH_RESPONSE" | tail -n1 | cut -d: -f2)
+print_result "Prediction Service Health" "$HEALTH_STATUS" "200" "$(echo "$HEALTH_RESPONSE" | head -n -1)"
+
 echo ""
 
 # Test 11: Test Data Acquisition API Endpoints (Protected)
@@ -445,6 +450,53 @@ print_result "Data Acquisition - Metrics" "$API_STATUS" "200" "$(echo "$API_RESP
 API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" -H "Authorization: Bearer $JWT_TOKEN" "$KONG_URL/api/acquisition/realtime")
 API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
 print_result "Data Acquisition - Realtime" "$API_STATUS" "200" "$(echo "$API_RESPONSE" | head -n -1)"
+
+echo ""
+
+# Test 11.5: Test Prediction Service API Endpoints (Protected)
+echo -e "${BLUE}11.5. Testing Prediction Service API Endpoints (Protected)${NC}"
+
+# Test prediction endpoint with sample PDU data
+PREDICTION_DATA='{
+  "timeUnit": "hour",
+  "buckets": [
+    {
+      "hour": "2024-01-01T10:00:00Z",
+      "entityStatePduCount": 150,
+      "fireEventPduCount": 25,
+      "collisionPduCount": 5,
+      "detonationPduCount": 10,
+      "dataPduCount": 30,
+      "actionRequestPduCount": 8,
+      "startResumePduCount": 2,
+      "setDataPduCount": 12,
+      "designatorPduCount": 6,
+      "electromagneticEmissionsPduCount": 15
+    },
+    {
+      "hour": "2024-01-01T11:00:00Z",
+      "entityStatePduCount": 175,
+      "fireEventPduCount": 30,
+      "collisionPduCount": 8,
+      "detonationPduCount": 12,
+      "dataPduCount": 35,
+      "actionRequestPduCount": 10,
+      "startResumePduCount": 3,
+      "setDataPduCount": 15,
+      "designatorPduCount": 8,
+      "electromagneticEmissionsPduCount": 18
+    }
+  ]
+}'
+
+API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" \
+    -X POST \
+    -H "Authorization: Bearer $JWT_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$PREDICTION_DATA" \
+    "$KONG_URL/api/prediction")
+API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
+print_result "Prediction Service - Predict PDU" "$API_STATUS" "200" "$(echo "$API_RESPONSE" | head -n -1)"
 
 echo ""
 
@@ -759,6 +811,26 @@ API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" "$KONG_URL/api/ingestion/inter
 API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
 print_result "Data Ingestion - Internal Metrics (No Token)" "$API_STATUS" "401" "$(echo "$API_RESPONSE" | head -n -1)"
 
+# Test prediction endpoint without token
+PREDICTION_TEST_DATA='{
+  "timeUnit": "hour",
+  "buckets": [
+    {
+      "hour": "2024-01-01T10:00:00Z",
+      "entityStatePduCount": 100,
+      "fireEventPduCount": 20
+    }
+  ]
+}'
+
+API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "$PREDICTION_TEST_DATA" \
+    "$KONG_URL/api/prediction")
+API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
+print_result "Prediction Service - Predict (No Token)" "$API_STATUS" "401" "$(echo "$API_RESPONSE" | head -n -1)"
+
 echo ""
 
 # Test 10: Token Validation Test
@@ -855,6 +927,9 @@ echo "  • Monthly data: /monthly (year/month parameters)"
 echo "  • Metrics: /metrics (default, last60minutes, lastDay)"
 echo "  • Realtime logs: /realtime/logs (time range parameters)"
 echo "  • Entity states, fire events, collision events, detonation events"
+echo "- Prediction Service: /api/prediction/*"
+echo "  • Health endpoint: /api/prediction/health (public)"
+echo "  • Prediction endpoint: /api/prediction (protected, POST with PDU data)"
 echo "- User Service: /api/user/*, /api/users/*, /api/auth/*"
 echo ""
 echo -e "${GREEN}✓ Kong Gateway Firebase JWT Integration: FULLY OPERATIONAL${NC}"
