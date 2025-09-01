@@ -37,18 +37,18 @@ spec:
           httpGet:
             path: /api/user/health
             port: 8080
-          initialDelaySeconds: 60
+          initialDelaySeconds: 100
           periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 6
+          timeoutSeconds: 10
+          failureThreshold: 8
         livenessProbe:
           httpGet:
             path: /api/user/health
             port: 8080
-          initialDelaySeconds: 90
+          initialDelaySeconds: 100
           periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
+          timeoutSeconds: 10
+          failureThreshold: 8
         env:
           - name: SPRING_DATASOURCE_URL
             value: "jdbc:postgresql://postgres:5432/dis_db"
