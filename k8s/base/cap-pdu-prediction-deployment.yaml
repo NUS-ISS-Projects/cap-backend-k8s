@@ -28,11 +28,13 @@ spec:
         - containerPort: 5001
         resources:
           limits:
-            cpu: "500m"
-            memory: "1Gi"
+            cpu: "2000m"
+            memory: "4Gi"
+            # Uncomment for GPU support
+            # nvidia.com/gpu: 1
           requests:
-            cpu: "200m"
-            memory: "512Mi"
+            cpu: "500m"
+            memory: "2Gi"
         readinessProbe:
           httpGet:
             path: /health
@@ -54,3 +56,23 @@ spec:
             value: "production"
           - name: PYTHONUNBUFFERED
             value: "1"
+          - name: DATA_ACQUISITION_URL
+            value: "http://data-acquisition-service:8080"
+          - name: DATA_INGESTION_URL
+            value: "http://data-ingestion-service:8080"
+          - name: DATA_PROCESSING_URL
+            value: "http://data-processing-service:8080"
+          - name: USE_GPU
+            value: "false"
+          - name: MODEL_NAME
+            value: "microsoft/DialoGPT-small"
+          - name: TRANSFORMERS_CACHE
+            value: "/tmp/transformers_cache"
+          - name: HF_HOME
+            value: "/tmp/huggingface_cache"
+          - name: USE_CACHING
+            value: "true"
+          - name: CACHE_TTL_SECONDS
+            value: "300"
+          - name: MAX_RESPONSE_TIME
+            value: "3.0"

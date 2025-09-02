@@ -110,6 +110,20 @@ data:
         - name: jwt-firebase
           config:
             firebase_project_id: "cap-backend-user"
+      # Chatbot endpoints - WITH authentication
+      - name: chatbot-protected
+        paths:
+        - /api/prediction/chat
+        strip_path: false
+        plugins:
+        - name: jwt-firebase
+          config:
+            firebase_project_id: "cap-backend-user"
+      # Chatbot health endpoint - NO authentication
+      - name: chatbot-health
+        paths:
+        - /api/prediction/chat/health
+        strip_path: false
         
     # Data Acquisition Service
     - name: data-acquisition-service
