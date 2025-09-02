@@ -101,6 +101,20 @@ data:
         paths:
         - /api/prediction/health
         strip_path: false
+      # Chat status endpoint - NO authentication (for monitoring)
+      - name: prediction-chat-status
+        paths:
+        - /api/prediction/chat/status
+        strip_path: false
+      # Chat endpoint - WITH authentication
+      - name: prediction-chat
+        paths:
+        - /api/prediction/chat
+        strip_path: false
+        plugins:
+        - name: jwt-firebase
+          config:
+            firebase_project_id: "cap-backend-user"
       # Prediction endpoints - WITH authentication
       - name: prediction-protected
         paths:
