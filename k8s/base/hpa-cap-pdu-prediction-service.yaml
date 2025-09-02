@@ -9,7 +9,7 @@ spec:
     kind: Deployment
     name: cap-pdu-prediction-service
   minReplicas: 1
-  maxReplicas: 3
+  maxReplicas: 2
   metrics:
   - type: Resource
     resource:
@@ -22,4 +22,4 @@ spec:
       name: memory
       target:
         type: Utilization
-        averageUtilization: 80
+        averageUtilization: 85

@@ -28,11 +28,11 @@ spec:
         - containerPort: 5001
         resources:
           limits:
-            cpu: "500m"
-            memory: "1Gi"
+            cpu: "1000m"
+            memory: "2Gi"
           requests:
-            cpu: "200m"
-            memory: "512Mi"
+            cpu: "300m"
+            memory: "1Gi"
         readinessProbe:
           httpGet:
             path: /health

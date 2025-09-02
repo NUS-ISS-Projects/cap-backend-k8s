@@ -498,6 +498,95 @@ API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" \
 API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
 print_result "Prediction Service - Predict PDU" "$API_STATUS" "200" "$(echo "$API_RESPONSE" | head -n -1)"
 
+# Test RAG system chat endpoint with various query types
+echo -e "${YELLOW}Testing RAG System Chat Endpoints:${NC}"
+
+# Test aggregated data query
+RAG_QUERY_TOTAL='{"query": "Total PDU for today"}'
+API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" \
+    -X POST \
+    -H "Authorization: Bearer $JWT_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$RAG_QUERY_TOTAL" \
+    "$KONG_URL/api/prediction/chat")
+API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
+print_result "RAG System - Total PDU Query" "$API_STATUS" "200" "$(echo "$API_RESPONSE" | head -n -1)"
+
+# Test real-time data query
+RAG_QUERY_REALTIME='{"query": "Real-time PDU activity"}'
+API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" \
+    -X POST \
+    -H "Authorization: Bearer $JWT_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$RAG_QUERY_REALTIME" \
+    "$KONG_URL/api/prediction/chat")
+API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
+print_result "RAG System - Real-time Query" "$API_STATUS" "200" "$(echo "$API_RESPONSE" | head -n -1)"
+
+# Test system status query
+RAG_QUERY_STATUS='{"query": "Current system status"}'
+API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" \
+    -X POST \
+    -H "Authorization: Bearer $JWT_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$RAG_QUERY_STATUS" \
+    "$KONG_URL/api/prediction/chat")
+API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
+print_result "RAG System - System Status Query" "$API_STATUS" "200" "$(echo "$API_RESPONSE" | head -n -1)"
+
+# Test general PDU statistics query
+RAG_QUERY_STATS='{"query": "PDU statistics breakdown"}'
+API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" \
+    -X POST \
+    -H "Authorization: Bearer $JWT_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$RAG_QUERY_STATS" \
+    "$KONG_URL/api/prediction/chat")
+API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
+print_result "RAG System - PDU Statistics Query" "$API_STATUS" "200" "$(echo "$API_RESPONSE" | head -n -1)"
+
+# Test error scenarios for prediction service
+echo -e "${YELLOW}Testing prediction service error scenarios:${NC}"
+
+# Test prediction endpoint without data (should return 400)
+API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" \
+    -X POST \
+    -H "Authorization: Bearer $JWT_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{}' \
+    "$KONG_URL/api/prediction")
+API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
+print_result "Prediction - Empty Data" "$API_STATUS" "400" "$(echo "$API_RESPONSE" | head -n -1)"
+
+# Test chat endpoint without query (should return 400)
+API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" \
+    -X POST \
+    -H "Authorization: Bearer $JWT_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{}' \
+    "$KONG_URL/api/prediction/chat")
+API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
+print_result "RAG System - Empty Query" "$API_STATUS" "400" "$(echo "$API_RESPONSE" | head -n -1)"
+
+# Test unauthorized access to prediction endpoints (should return 401)
+echo -e "${YELLOW}Testing unauthorized access to prediction endpoints:${NC}"
+
+API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "$PREDICTION_DATA" \
+    "$KONG_URL/api/prediction")
+API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
+print_result "Prediction - Unauthorized" "$API_STATUS" "401" "$(echo "$API_RESPONSE" | head -n -1)"
+
+API_RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "$RAG_QUERY_TOTAL" \
+    "$KONG_URL/api/prediction/chat")
+API_STATUS=$(echo "$API_RESPONSE" | tail -n1 | cut -d: -f2)
+print_result "RAG System - Unauthorized" "$API_STATUS" "401" "$(echo "$API_RESPONSE" | head -n -1)"
+
 echo ""
 
 # Test 12: Test Comprehensive Aggregation Endpoints (Protected)
@@ -917,6 +1006,7 @@ echo "- All service endpoints coverage: Complete ✓"
 echo "- Comprehensive aggregation endpoints: Complete ✓"
 echo "- Realtime logs endpoint: Complete ✓"
 echo "- Error scenario validation: Complete ✓"
+echo "- Prediction service and RAG system: Complete ✓"
 echo ""
 echo -e "${BLUE}Services Tested:${NC}"
 echo "- Data Ingestion Service: /api/ingestion/*"
@@ -930,6 +1020,9 @@ echo "  • Entity states, fire events, collision events, detonation events"
 echo "- Prediction Service: /api/prediction/*"
 echo "  • Health endpoint: /api/prediction/health (public)"
 echo "  • Prediction endpoint: /api/prediction (protected, POST with PDU data)"
+echo "  • RAG System Chat: /api/prediction/chat (protected, POST with query)"
+echo "  • Multiple query types: total PDU, real-time, system status, statistics"
+echo "  • Error handling: empty data, unauthorized access"
 echo "- User Service: /api/user/*, /api/users/*, /api/auth/*"
 echo ""
 echo -e "${GREEN}✓ Kong Gateway Firebase JWT Integration: FULLY OPERATIONAL${NC}"
