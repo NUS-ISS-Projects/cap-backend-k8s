@@ -32,23 +32,23 @@ spec:
             memory: "2Gi"
           requests:
             cpu: "300m"
-            memory: "1Gi"
+            memory: "1.5Gi"
         readinessProbe:
           httpGet:
             path: /health
             port: 5001
-          initialDelaySeconds: 30
+          initialDelaySeconds: 180
           periodSeconds: 10
           timeoutSeconds: 5
-          failureThreshold: 3
+          failureThreshold: 6
         livenessProbe:
           httpGet:
             path: /health
             port: 5001
-          initialDelaySeconds: 60
+          initialDelaySeconds: 180
           periodSeconds: 15
           timeoutSeconds: 5
-          failureThreshold: 3
+          failureThreshold: 6
         env:
           - name: FLASK_ENV
             value: "production"
