@@ -1,0 +1,45 @@
+4.2 Availability
+Availability refers to the system's ability to remain operational and accessible over time, minimizing downtime and ensuring resilience to failures.
+Mechanisms and Design Choices for Availability:
+Redundancy and Fault Tolerance (Kubernetes-Native):
+Pod Replication & Self-Healing: The application services (data-ingestion-service, data-processing-service, data-acquisition-service, cap-user-service, cap-pdu-prediction-service) are deployed as Kubernetes Deployments. Kubernetes automatically maintains the desired number of pod replicas. If a pod or the node it's running on fails, Kubernetes will reschedule and restart the pod on a healthy node.
+Horizontal Pod Autoscaling (HPA): HPAs not only manage performance but also contribute to availability by ensuring a minReplicas count (currently 1) is always running and can scale up to maxReplicas (currently 2) to handle load or transient issues affecting a single pod. The platform includes HPAs for data-ingestion-service (70% CPU target), data-processing-service (85% CPU target), and data-acquisition-service (85% CPU target).
+Health Probes: All application Deployments are configured with comprehensive Liveness and Readiness probes that target their respective /health API endpoints.
+Readiness Probes (readinessProbe): Ensure that network traffic is only routed to pods that have fully started and are ready to serve requests. Configured with initialDelaySeconds: 60, periodSeconds: 10, timeoutSeconds: 5, and failureThreshold: 6 for most services, with extended delays (180s) for the ML prediction service to accommodate model loading.
+Liveness Probes (livenessProbe): Allow Kubernetes to detect and automatically restart unresponsive or deadlocked application instances. Configured with initialDelaySeconds: 90, periodSeconds: 10, timeoutSeconds: 5, and failureThreshold: 3 for most services, with extended timeouts for the ML prediction service.
+StatefulSet for Backend Services: Kafka, Zookeeper, and PostgreSQL are deployed as StatefulSets. While currently single-replica for development, StatefulSets are designed for stateful applications, providing stable network identifiers and ordered, graceful deployment and scaling, which is important for these distributed systems.
+
+Figure 4.2.a: HPA services
+
+Figure 4.2.b: Probes for healthiness check
+Application Fallbacks: The RealTimeMetricsService within data-acquisition-service implements comprehensive error handling when fetching metrics from data-ingestion-service. The service uses a try-catch block to handle RestClientException and null responses, logging errors and returning a createFallbackMetrics() object with all fields set to 0 instead of failing the request, ensuring the /api/acquisition/realtime endpoint remains partially available even when the data-ingestion-service is unavailable.
+
+Data Pipeline Resilience:
+Kafka as a Durable Buffer: Apache Kafka acts as a persistent message queue between the data-ingestion-service and the data-processing-service. If the data-processing-service instances become temporarily unavailable, PDUs published by the data-ingestion-service are retained in Kafka topics. Once the processing service recovers, it can resume consuming messages from where it left off (based on consumer group offsets), preventing data loss during transient outages.
+Fallback Mechanisms: The RealTimeMetricsService within data-acquisition-service implements error handling when fetching metrics from data-ingestion-service. If the remote call fails (e.g., due to a network issue or data-ingestion-service being down), it logs the error and returns a default/empty RealTimeMetrics object instead of failing the entire request, ensuring the /api/acquisition/realtime endpoint remains partially available.
+
+Zero-Downtime Deployments:
+Rolling Updates: The Kubernetes Deployments for application services are configured with the RollingUpdate strategy (strategy: type: RollingUpdate) with specific parameters: maxUnavailable: 1 and maxSurge: 1 for most services, ensuring that when a new version of a service is deployed via the CI/CD pipeline, Kubernetes updates pods incrementally—creating new pods and terminating old ones gradually—thus maintaining service availability during the update process. The cap-pdu-prediction-service uses maxSurge: 0 to prevent resource contention during ML model loading.
+
+Figure 4.2.c: Rolling updates
+CI/CD Rollout Verification and Automated Rollback: The GitHub Actions CD pipeline includes a comprehensive "Check Rollout Status for DIS Platform" step that uses kubectl rollout status to verify that all deployments (data-ingestion-service, data-processing-service, data-acquisition-service, cap-user-service, cap-pdu-prediction-service, kong-gateway) and statefulsets (kafka, zookeeper, postgres) have successfully completed their updates with a 5-minute timeout. The pipeline tracks failed components and automatically triggers a "Rollback Failed Components" step using kubectl rollout undo for any failed deployments or statefulsets, ensuring rapid recovery from deployment failures.
+
+Figure 4.2.d: Rolling update status
+
+Kong API Gateway Availability:
+High Availability Gateway: Kong Gateway serves as the unified entry point for all external traffic across environments. In staging and production, Kong is deployed with health probes (readinessProbe and livenessProbe targeting /status endpoint), resource limits (requests: 100m CPU/384Mi memory, limits: 300m CPU/768Mi memory), and LoadBalancer service type for external access. The gateway includes comprehensive error handling, rate limiting (5000 requests/minute, 50000/hour in staging), and CORS configuration to ensure reliable traffic management even under high load or partial service failures.
+		
+Additional Service Availability Features:
+User Service (cap-user-service): Deployed as a Kubernetes Deployment with health probes and Firebase authentication integration. The service handles user registration, login, and session management with stateless JWT-based authentication, ensuring scalability and availability.
+ML Prediction Service (cap-pdu-prediction-service): Deployed with enhanced availability configurations including higher resource allocation (requests: 300m CPU/1.5Gi memory, limits: 1000m CPU/2Gi memory), extended probe timeouts (180s initialDelaySeconds) to accommodate Python Flask application startup and ML model loading, and comprehensive health monitoring via /health endpoint.
+
+Potential Availability Enhancements for Production:
+Persistent Storage for Stateful Services:
+PostgreSQL: The current PostgreSQL StatefulSet is configured with a PersistentVolumeClaim (PVC) using 20Gi of durable storage with the standard-rwo storage class, ensuring data persistence across pod restarts and rescheduling. This provides a solid foundation for production use, though additional high-availability configurations may be considered for enhanced resilience.
+Kafka & Zookeeper: The Kafka and Zookeeper StatefulSets should be configured with PVCs for their data directories to ensure data persistence across pod restarts and rescheduling in production environments. Currently deployed with single replicas and resource limits (Kafka: 50m-200m CPU, 256Mi-512Mi memory; Zookeeper: 50m-150m CPU, 128Mi-256Mi memory).
+High Availability for Backend Services:
+PostgreSQL: Implement a high-availability PostgreSQL setup, such as using a managed cloud database service (e.g., Cloud SQL with HA configuration) or deploying a PostgreSQL cluster with replication (e.g., using Patroni).
+Kafka & Zookeeper: Increase the replica count for Kafka brokers and Zookeeper instances (e.g., to 3 or 5 replicas) and configure them for clustered operation to tolerate node failures. This includes setting appropriate replication factors for Kafka topics and configuring proper Zookeeper ensemble for consensus.
+Increased Replica Counts: For stateless application services, increase the minReplicas in HPAs and potentially the default replicas in Deployments (e.g., to 2 or 3) for production environments to ensure at least two instances are always running, providing immediate failover capability.
+Kong Gateway High Availability: Deploy Kong Gateway with multiple replicas (3+ instances) and implement Pod Disruption Budgets to ensure gateway availability during node maintenance or failures.
+Cross-Zone/Region Deployments (Advanced): For very high availability requirements, consider deploying the GKE cluster and critical services across multiple zones or even regions, along with global load balancing and regional Kong Gateway deployments.

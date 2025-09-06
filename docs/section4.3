@@ -1,0 +1,75 @@
+4.3 Security
+Security is addressed through a combination of planned architecture, infrastructure configuration, and CI/CD practices.
+Authentication and Access Control 
+
+
+Kong Gateway Firebase JWT Authentication: The system implements a comprehensive Firebase JWT authentication system through Kong API Gateway. Kong is configured with a custom jwt-firebase plugin (firebase_project_id: "cap-backend-user") that validates Firebase JWTs at the edge, automatically fetching and rotating Firebase public keys for signature verification. The gateway implements selective authentication with granular route-level control:
+- Public endpoints (no authentication): Health endpoints (/api/*/health), authentication endpoints (/api/auth/login, /api/auth/register), and monitoring endpoints (/api/prediction/chat/status)
+- Protected endpoints (Firebase JWT required): All data endpoints (/api/acquisition/*, /api/ingestion/*, /api/processing/*, /api/prediction/*), user management (/api/users/*, /api/user-sessions), and prediction services (/api/prediction/chat)
+
+Implementation Status: Authentication is fully implemented at the Kong Gateway level with edge-level JWT validation. The user-service additionally implements Spring Security with a dual-layer authentication approach:
+1. Primary: Kong header-based authentication (X-User-ID, X-User-Email, X-Consumer-ID headers)
+2. Fallback: Direct Firebase token validation for service-to-service communication
+The FirebaseTokenFilter implements comprehensive debug logging and automatic user provisioning in PostgreSQL upon successful authentication.
+
+Internal Endpoints: An internal-only endpoint (/internal/metrics/realtime) is used for service-to-service communication to fetch real-time metrics, which is not exposed via Kong Gateway, ensuring secure internal communication between data-acquisition and data-ingestion services.
+
+
+Secure Communication & Data 
+
+
+TLS/HTTPS: The Kong Gateway LoadBalancer service is configured for HTTPS termination with both HTTP (port 80) and HTTPS (port 443) support in production environments. This provides secure external communication with SSL/TLS encryption.
+
+Rate Limiting and Traffic Control: Kong Gateway implements comprehensive traffic management with rate limiting configured at 5000 requests/minute and 50000 requests/hour using local policy. This prevents abuse and ensures service availability under high load conditions.
+
+CORS Security: Kong Gateway is configured with comprehensive CORS policies allowing all origins (*) for development flexibility while supporting all standard HTTP methods (GET, POST, PUT, DELETE, OPTIONS). Headers include Accept, Content-Type, Date, and X-Auth-Token with credentials support and 3600-second max age.
+
+            Figure 4.3.a: Gateway settings.
+Secure Ingestion Channel: "Secure Channel: VPN/TLS" for the initial PDU transmission from the on-premise source to the cloud, protecting data at the network boundary. Can be done in phase 2.
+Internal Traffic: Communication between services inside the Kubernetes cluster (e.g., service-to-Kafka, service-to-Postgres) is typically unencrypted, which is a common practice that relies on the security of the private cluster network. For higher security requirements, network policies and service mesh technologies could enforce stricter controls and mTLS. Can be done in phase 2.
+Secrets Management 
+
+
+GitHub Actions Secrets: The CI/CD pipeline securely manages sensitive credentials using GitHub Actions secrets including:
+- PROJECT_ID, GKE_CLUSTER, GKE_ZONE: Google Cloud Platform configuration
+- GHCR_USERNAME, GHCR_TOKEN: GitHub Container Registry authentication
+- GCLOUD_AUTH: Google Cloud service account credentials (JSON format)
+- STAGING_APP_URL: Application URL for DAST scanning
+- FIREBASE_SA_B64_CI: Base64-encoded Firebase service account for authentication
+
+            Figure 4.3.b: Secret management
+Kubernetes Secrets: Multiple secrets are dynamically generated during the CI/CD pipeline:
+- firebase-service-account: Created from FIREBASE_SA_B64_CI for Firebase authentication integration
+- ghcr-secret: Generated from GHCR credentials for container image pulling from GitHub Container Registry
+Database credentials are passed to pods as environment variables (SPRING_DATASOURCE_USERNAME: "dis_user", SPRING_DATASOURCE_PASSWORD: "dis_pass") defined in the deployment manifests, following Kubernetes best practices for configuration management.
+
+     Figure 4.3.c: Github repo secrets
+Proactive Security Scanning 
+
+
+The CI/CD pipeline includes a comprehensive DAST (Dynamic Application Security Testing) job that runs conditionally after successful staging deployments. The implementation uses OWASP ZAP (zaproxy/action-baseline@v0.11.0) to perform baseline security scans with the following features:
+- Conditional execution: Only runs on staging tags (-staging suffix) and successful deployments
+- Target scanning: Scans the STAGING_APP_URL for web vulnerabilities
+- Multiple report formats: Generates JSON, HTML, and XML reports (-J report.json -r report.html -x report.xml)
+- Artifact preservation: Uploads all scan reports as GitHub Actions artifacts for security review
+- Non-blocking: Currently configured to not fail the pipeline (fail_action: commented out) to allow for gradual security improvement
+
+Additional Security Monitoring:
+Kong Gateway Health Monitoring: Kong Gateway includes comprehensive health monitoring with readiness and liveness probes targeting the /status endpoint (initialDelaySeconds: 30/60, periodSeconds: 10/30) ensuring gateway availability and security service continuity.
+Resource Security: Kong Gateway is deployed with specific resource limits (requests: 100m CPU/384Mi memory, limits: 300m CPU/768Mi memory) to prevent resource exhaustion attacks and ensure stable security service operation.
+
+Figure 4.3.d: DAST scanning
+Current Security Implementation Status:
+Spring Security Configuration: The user-service implements comprehensive Spring Security with @EnableWebSecurity, CSRF disabled for API usage, and specific endpoint authorization rules. Public endpoints include /api/auth/register, /api/auth/login, /api/user-sessions, and /api/user/health, while all other endpoints require authentication.
+Container Security: All services use imagePullSecrets (ghcr-secret) for secure container image pulling from GitHub Container Registry, preventing unauthorized access to private container images.
+Environment-Specific Security: Kong Gateway configurations are environment-specific through Kubernetes overlays, allowing different security policies for local development (NodePort with admin access) versus production (LoadBalancer with restricted access).
+
+Potential Security Enhancements:
+Enhanced RBAC Implementation: Extend role-based access control beyond the current user service to include fine-grained permissions for data access and administrative functions. Currently, the system uses a binary authenticated/unauthenticated model.
+Advanced Authentication Features: Implement additional authentication methods such as API keys for service-to-service communication and enhanced session management. Consider implementing refresh token rotation and session timeout policies.
+Secure Internal Communication (mTLS): For enhanced security within the cluster, consider implementing mutual TLS (mTLS) for service-to-service communication (e.g., using a service mesh like Istio or Linkerd). Also, configure SSL/TLS for Kafka and PostgreSQL connections.
+NetworkPolicies: Implement Kubernetes NetworkPolicies to define fine-grained network traffic rules between pods, restricting communication to only what is necessary (principle of least privilege).
+Regular Vulnerability Scanning: Implement regular scanning of container images (e.g., using Google Container Registry vulnerability scanning or tools like Trivy/Clair) and application dependencies for known vulnerabilities. Consider integrating security scanning into the CI/CD pipeline.
+Principle of Least Privilege for Service Accounts: Ensure Kubernetes service accounts used by pods have the minimum necessary RBAC permissions. Currently, services use default service accounts without explicit RBAC restrictions.
+Input Validation Enhancement: Enhance input validation at API gateways and within services to protect against common injection attacks and malformed data. Consider implementing request size limits and content type validation at Kong Gateway level.
+Security Headers: Implement security headers (HSTS, X-Frame-Options, X-Content-Type-Options) at Kong Gateway level to enhance browser security for web clients.
