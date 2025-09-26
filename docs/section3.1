@@ -1,0 +1,44 @@
+3.1 Logical Architecture & Design
+The logical architecture is structured as an event-driven pipeline that separates concerns into distinct, independently scalable microservices, promoting resilience and maintainability. The system comprises six primary services: Data Ingestion, Data Processing, Data Acquisition, CAP User Service, CAP PDU Prediction Service, and Kong Gateway (API Gateway). Raw data enters the system through Kong Gateway, is transformed into events (messages), flows through processing stages, and is stored for querying, with Firebase JWT authentication and authorization ensuring secure access across all services.
+Primary Data Flow
+Data Ingestion Service: Listens for UDP packets containing Distributed Interactive Simulation (DIS) Protocol Data Units (PDUs). It decodes PDUs, converts them into structured JSON format, and publishes them to an Apache Kafka topic. This asynchronous handoff decouples ingestion from processing, ensuring scalability and fault tolerance.
+Data Processing Service: Subscribes to the Kafka topic, consumes JSON messages, parses them into structured data records (e.g., EntityStateRecord, FireEventRecord), and persists them into a PostgreSQL database.
+Data Acquisition Service: Provides a RESTful API layer for clients to access historical and real-time data. It queries the PostgreSQL database for historical records and communicates with the Data Ingestion Service for real-time ingestion metrics, ensuring client queries do not impact the real-time ingestion path.
+Kong Gateway (API Gateway): Serves as the unified entry point for all HTTP(S) traffic, providing centralized routing, authentication, and security policies. It implements Firebase JWT authentication through a custom jwt-firebase plugin, validates tokens for protected endpoints, and routes requests to appropriate backend services based on URL paths (/api/acquisition/*, /api/ingestion/*, /api/processing/*, /api/auth/*, /api/users/*, /api/prediction/*). Kong Gateway also enforces CORS policies, rate limiting, and provides comprehensive monitoring through Prometheus metrics.
+CAP User Service: Manages user authentication, authorization, and role-based access control (RBAC) with Firebase JWT integration. It handles user registration and login workflows, validates Firebase JWT tokens, maintains user profiles and sessions in a PostgreSQL table (user_record), and provides secure endpoints for user management. The service integrates seamlessly with Kong Gateway's Firebase authentication layer to ensure consistent security across the platform.
+CAP PDU Prediction Service: Provides advanced ML-powered analytics and Retrieval-Augmented Generation (RAG) capabilities for DIS data analysis. It offers intelligent insights, predictive analytics, and natural language querying capabilities for simulation data. The service integrates with processed PDU data from PostgreSQL to deliver ML-driven predictions, vector embeddings for similarity search, and conversational AI interfaces for data exploration and analysis.
+
+Updated Data Flow with Kong Gateway Integration
+The system now operates through a secure, centralized API gateway architecture:
+
+External Traffic Flow:
+1. Client applications send HTTPS requests to Kong Gateway's external LoadBalancer IP
+2. Kong Gateway processes requests through its Firebase JWT plugin:
+   - Public endpoints (/api/*/health, /api/auth/login, /api/auth/register) bypass authentication
+   - Protected endpoints require valid Firebase JWT tokens
+   - Firebase public keys are dynamically fetched for token signature verification
+3. Authenticated requests are routed based on URL paths to appropriate backend services:
+   - /api/acquisition/* → Data Acquisition Service (port 8080)
+   - /api/ingestion/* → Data Ingestion Service (port 8080)
+   - /api/processing/* → Data Processing Service (port 8080)
+   - /api/auth/*, /api/users/* → CAP User Service (port 8080)
+   - /api/prediction/* → CAP PDU Prediction Service (port 5001)
+
+UDP Data Ingestion Flow (unchanged):
+1. DIS PDU emitters send UDP packets directly to Data Ingestion Service via NodePort (32000 → 3000)
+2. Data Ingestion Service decodes PDUs and publishes JSON messages to Kafka topic "dis-pdus"
+3. Data Processing Service consumes from Kafka and persists structured records to PostgreSQL
+
+Cross-Service Communication:
+- All HTTP API communication flows through Kong Gateway with Firebase JWT validation
+- Data Acquisition Service queries PostgreSQL for historical data and fetches real-time metrics from Data Ingestion Service
+- CAP PDU Prediction Service accesses processed data from PostgreSQL for ML analysis
+- CAP User Service manages authentication state and user sessions in PostgreSQL
+- Kong Gateway provides centralized monitoring, rate limiting, and security policy enforcement
+
+Figure 1.1.a: System context diagram - Use case diagram
+
+ 
+Figure 1.1.b: Overall architecture
+
+Figure 1.1.c: Domain Driven Design (DDD) Diagram

@@ -1,0 +1,76 @@
+3.1.3 Nodes and Subsystems
+Each component in the five-tier architecture is a self-contained subsystem with clearly defined responsibilities and interactions. The architecture is organized around Kong Gateway as the central API Gateway tier, providing unified security, routing, and monitoring for all external traffic through Firebase JWT authentication.
+
+Kong Gateway (API Gateway Tier):
+
+Responsibility: Serves as the unified entry point for all external HTTP(S) traffic, providing centralized API management, security, and routing. Kong Gateway enforces Firebase JWT authentication for protected endpoints while allowing public access to health checks and authentication routes. It implements path-based routing to backend microservices, CORS policies, rate limiting, and comprehensive monitoring through Prometheus metrics. The gateway uses a custom jwt-firebase plugin that validates Firebase JWT tokens by dynamically fetching Firebase public keys for signature verification.
+
+Interaction: It receives all external HTTPS requests from clients/UIs via its LoadBalancer service. Kong Gateway processes requests through its Firebase JWT plugin, validating tokens for protected endpoints and extracting user claims. It routes authenticated requests based on URL paths to appropriate backend services: /api/acquisition/* → Data Acquisition Service, /api/ingestion/* → Data Ingestion Service, /api/processing/* → Data Processing Service, /api/auth/* and /api/users/* → CAP User Service, /api/prediction/* → CAP PDU Prediction Service. Kong Gateway also provides centralized monitoring, rate limiting, and security policy enforcement across all services.
+
+Data Ingestion Service (Ingestion Tier):
+
+
+Responsibility: The primary entry point for all simulation data through multiple channels. It listens for raw DIS PDUs over UDP traffic, decodes them, and serializes them into JSON messages for downstream processing. The service also provides HTTP endpoints for management operations accessible through Kong Gateway with Firebase JWT authentication. It tracks real-time metrics like PDU counts, rates, and ingestion statistics, optimized for high-throughput network I/O and real-time data processing.
+Interaction: It receives UDP data from external PDU emitters via NodePort service (port 32000). It publishes JSON messages to the dis-pdus Kafka topic for asynchronous processing. It serves real-time metrics over an internal HTTP endpoint (/internal/metrics/realtime) when requested by the Data Acquisition Service. It also exposes management endpoints (/api/ingestion/*) through Kong Gateway, with health checks publicly accessible and other endpoints protected by Firebase JWT authentication.
+Data Processing Service (Processing Tier):
+
+
+Responsibility: Acts as the traditional ETL engine of the platform. It consumes JSON messages from Kafka, identifies the PDU type, and uses a factory pattern to delegate parsing to the correct handler (EntityStatePduParser, FirePduParser, etc.). It then saves the structured records to PostgreSQL for persistent storage. The service handles the core business logic of transforming raw data into structured, queryable formats.
+Interaction: It is a consumer of the dis-pdus Kafka topic, processing messages asynchronously. It connects to the PostgreSQL database to write EntityStateRecord, FireEventRecord, and DataPduRecord data. It exposes management endpoints (/api/processing/*) through Kong Gateway, with health checks publicly accessible and other endpoints protected by Firebase JWT authentication.
+
+CAP PDU Prediction Service (Processing Tier):
+
+
+Responsibility: Provides advanced Machine Learning and Retrieval-Augmented Generation (ML/RAG) capabilities for predictive analytics and intelligent data processing. This service analyzes processed PDU data to generate predictions, insights, and recommendations using ML models and vector embeddings. It supports natural language queries through RAG capabilities, enabling intelligent data exploration and analysis. The service is optimized for ML workloads with extended startup time for model initialization and higher resource allocation.
+Interaction: It accesses processed data from PostgreSQL for ML analysis and prediction generation. It exposes prediction endpoints (/api/prediction/*) through Kong Gateway, including chat interfaces (/api/prediction/chat) for natural language interactions. Health checks (/api/prediction/health) and monitoring endpoints (/api/prediction/chat/status) are publicly accessible, while prediction endpoints require Firebase JWT authentication. The service operates as a single-instance deployment to maintain ML model state consistency.
+Data Acquisition Service (Data & Presentation Tier):
+
+
+Responsibility: The single source of truth for clients, providing a comprehensive REST API for accessing all forms of data through secure, well-defined interfaces. It serves raw historical data, monthly and custom-range aggregations, and time-windowed metrics (e.g., peak load, average rate). The service ensures client queries do not impact the real-time ingestion path by maintaining separation between read and write operations. All endpoints are secured through Kong Gateway with Firebase JWT authentication.
+Interaction: It receives HTTP requests from clients/UIs via Kong Gateway's path-based routing (/api/acquisition/*), with health checks publicly accessible and data endpoints protected by Firebase JWT authentication. It makes read queries to the PostgreSQL database to fetch historical and aggregated data. It makes HTTP GET requests to the Data Ingestion Service's internal endpoint (/internal/metrics/realtime) to fetch real-time metrics for client presentation.
+CAP User Service (Data & Presentation Tier):
+
+
+Responsibility: Manages user authentication, authorization, and role-based access control (RBAC) with Firebase JWT integration. It handles user registration and login workflows through Firebase project "cap-backend-user", validates Firebase JWT tokens, and maintains user profiles and sessions in PostgreSQL. The service provides secure endpoints for user management and integrates seamlessly with Kong Gateway's Firebase authentication layer to ensure consistent security across the platform. It tracks user-related events for auditing and compliance.
+Interaction: It receives HTTP requests from clients/UIs via Kong Gateway's path-based routing (/api/auth/*, /api/users/*, /api/user-sessions/*). Public authentication endpoints (/api/auth/login, /api/auth/register) bypass Firebase JWT validation, while protected user management endpoints require valid Firebase JWT tokens. It connects to the PostgreSQL database to store and retrieve user records (user_record table) and session information. It integrates with Firebase Authentication for user registration, login, and JWT token management, working in coordination with Kong Gateway's jwt-firebase plugin for token validation.
+Apache Kafka & Zookeeper (Messaging Tier):
+
+
+Responsibility: Serve as the central nervous system of the data pipeline, acting as a durable, asynchronous buffer between the ingestion and processing layers. Kafka provides a fault-tolerant, ordered log of all ingested PDU events in the "dis-pdus" topic, ensuring data is not lost during processing backlogs or downstream failures. Zookeeper manages Kafka's state, coordination, and cluster management. This tier effectively decouples data producers from data consumers, enabling resilient and scalable data processing.
+Interaction: Kafka receives JSON messages from the Data Ingestion Service (producer) and serves them to both the Data Processing Service and CAP PDU Prediction Service (consumers). The messaging tier enables asynchronous processing and provides load balancing capabilities for downstream services.
+
+PostgreSQL Database (Data & Presentation Tier):
+
+
+Responsibility: The system's persistent storage layer and long-term memory. It stores structured, processed DIS data in relational tables (entity_state_record, fire_event_record, data_pdu_record), user data, and session information, making it available for complex querying and analysis. PostgreSQL was selected for its ACID compliance, robust performance with both transactional and analytical workloads, and excellent support for complex queries. The database supports both real-time operations and historical data analysis.
+Interaction: It receives write commands from the Data Processing Service for structured PDU records and from the CAP User Service for user data and sessions. It serves read queries from the Data Acquisition Service for historical and aggregated data, and from the CAP PDU Prediction Service for ML analysis. All database interactions are optimized to ensure separation between read and write operations, maintaining performance under varying loads.
+
+Figure 3.1.3.a: DB interactions
+
+## Service Interactions Summary
+
+The five-tier architecture ensures clear separation of concerns and secure communication flows:
+
+**External Traffic Flow:**
+1. All external HTTP(S) traffic enters through Kong Gateway (API Gateway Tier)
+2. Kong Gateway enforces Firebase JWT authentication for protected endpoints
+3. Path-based routing directs requests to appropriate backend services
+4. CORS, rate limiting, and monitoring are applied at the gateway level
+
+**Data Ingestion Flow:**
+1. UDP simulation data flows directly to Data Ingestion Service (Ingestion Tier)
+2. HTTP management requests to Data Ingestion Service route through Kong Gateway
+3. All ingested data is published to Kafka (Messaging Tier) for asynchronous processing
+
+**Processing Flow:**
+1. Data Processing Service and CAP PDU Prediction Service consume from Kafka (Messaging Tier)
+2. Processed data is stored in PostgreSQL (Data & Presentation Tier)
+3. ML/RAG analysis results are made available via API endpoints through Kong Gateway
+
+**Client Access Flow:**
+1. Web/mobile clients authenticate via CAP User Service through Kong Gateway
+2. Data queries are served by Data Acquisition Service through Kong Gateway
+3. Real-time metrics and predictions are accessed via respective service APIs through Kong Gateway
+4. All client interactions are secured with Firebase JWT tokens validated by Kong Gateway
+
+This architecture ensures scalability, security, and maintainability while providing clear data flow paths and centralized API management.

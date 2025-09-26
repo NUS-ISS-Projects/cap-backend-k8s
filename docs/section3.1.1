@@ -1,0 +1,65 @@
+3.1.1 Key Architectural Decisions
+The architecture of the DIS Data Platform was shaped by several strategic decisions designed to ensure scalability, resilience, and operational efficiency. The following table details these key decisions, the rationale behind them, and their resulting benefits.
+Architectural Decision
+Rationale & Justification
+Key Benefits
+Adopt a Microservices Architecture
+The system is decomposed into four distinct services (cap-user-service, data-ingestion, data-processing, data-acquisition, and cap-pdu-prediction-service) to separate concerns. This approach allows I/O-intensive tasks (ingestion) to be handled separately from CPU/database-intensive tasks (processing), while the prediction service provides ML/RAG-based analytics capabilities. Each service has a dedicated health check endpoint for independent management and monitoring, enabling independent development and fault isolation.
+Independent Scalability
+Improved Maintainability
+Enhanced Fault Tolerance
+Use an Event-Driven Approach with Apache Kafka
+To avoid data loss and improve resilience, the architecture uses Apache Kafka as an asynchronous message broker, decoupling the ingestion and processing services. The data-ingestion service receives DIS PDUs via UDP listener and publishes events to Kafka without waiting for them to be processed, creating a durable buffer. The data-acquisition service provides real-time metrics endpoints (/internal/metrics/realtime) for inter-service communication. If the data-processing service is slow or offline, messages are safely queued and processed later, preventing backpressure on the ingestion layer.
+Decoupling of Services
+Resilience to Failure
+Load Balancing & Data Loss Prevention
+Standardize on a Container-Based Platform (Docker & Kubernetes)
+Each microservice is packaged as a Docker container to ensure a consistent runtime environment from development to production. The entire platform is orchestrated by Google Kubernetes Engine (GKE), which automates deployment, networking, self-healing, and service discovery. Utilizing a managed service like GKE abstracts away the complexity of managing the Kubernetes control plane.
+Environmental Consistency Operational Automation
+Portability & High Availability
+Implement Horizontal Pod Autoscaling (HPA)
+Simulation data loads can be highly variable. To handle performance demands efficiently, Horizontal Pod Autoscalers (HPAs) are implemented for each microservice. The HPAs automatically scale the number of running pods based on CPU utilization, ensuring the system can handle load spikes while optimizing resource costs during quiet periods.
+Elastic Scalability
+Cost Optimization
+Performance Under Load
+Automate Deployments with a CI/CD Pipeline
+A Continuous Deployment pipeline using GitHub Actions automates the entire release process. Triggered by Git tags, the workflow builds and applies Kubernetes manifests using Kustomize, runs status checks, and can perform automatic rollbacks. This removes manual deployment errors and increases the speed and reliability of releases. The pipeline integrates comprehensive security measures including DAST scans for staging environments, Firebase JWT validation, and Kong security plugins for rate limiting and authentication enforcement.
+Increased Deployment Velocity
+Improved Reliability & Consistency
+Integrated Security (DevSecOps)
+Implement Kong API Gateway with Firebase JWT Authentication
+Kong Gateway serves as the central entry point for all external API requests, providing path-based routing to backend microservices. It enforces Firebase JWT authentication for protected endpoints while allowing public access to health checks and authentication routes. Kong's plugin architecture enables centralized security, rate limiting, and monitoring capabilities across all services.
+Centralized API Management
+Enhanced Security & Authentication
+Simplified Client Integration
+Establish Comprehensive Monitoring and Observability
+The platform implements a multi-layered monitoring approach using Prometheus for metrics collection, Grafana for visualization, and Kong Gateway metrics for API monitoring. Each microservice exposes health check endpoints and application metrics, while Horizontal Pod Autoscalers provide real-time scaling metrics. This comprehensive observability enables proactive issue detection and performance optimization.
+Proactive Issue Detection
+Performance Optimization
+Operational Visibility
+Adopt PostgreSQL as Primary Data Store
+PostgreSQL was selected as the primary database for its ACID compliance, robust performance with both transactional and analytical workloads, and excellent support for complex queries. The database stores processed PDU records (EntityStateRecord, FireEventRecord, DataPduRecord), user data, and session information. PostgreSQL's reliability and mature ecosystem make it ideal for mission-critical DIS data persistence with consistent performance under varying loads.
+ACID Compliance & Data Integrity
+Proven Reliability & Performance
+Rich Query Capabilities
+Implement Strategic StatefulSet vs Deployment Pattern
+The architecture strategically uses StatefulSets for stateful services (PostgreSQL, Kafka, Zookeeper) that require persistent storage and stable network identities, while using Deployments for stateless application services (data-ingestion, data-processing, data-acquisition, cap-user-service, cap-pdu-prediction-service). This pattern ensures data persistence for critical infrastructure while enabling flexible scaling and rolling updates for application components.
+Appropriate State Management
+Optimized Scaling Strategies
+Data Persistence Guarantees
+Integrate Firebase Authentication for Enterprise Security
+Firebase Authentication was chosen to provide enterprise-grade user management with JWT token validation, eliminating the need to build custom authentication infrastructure. The cap-user-service integrates with Firebase project "cap-backend-user" for user registration, login, and session management, while Kong Gateway enforces JWT validation across all protected endpoints. This approach provides secure, scalable authentication with minimal operational overhead.
+Enterprise-Grade Security
+Reduced Development Complexity
+Scalable User Management
+Implement Environment-Specific Configuration Management
+The platform uses Kustomize for environment-specific configuration management, with base configurations in k8s/base/ and environment overlays in k8s/overlays/ (staging, production). This approach enables consistent deployments across environments while allowing for environment-specific customizations such as resource limits, replica counts, and service configurations. Configuration is externalized through environment variables and Kubernetes ConfigMaps.
+Environment Consistency
+Configuration Flexibility
+Deployment Reliability
+Optimize Resource Allocation and Performance
+The architecture implements fine-tuned resource allocation with specific CPU and memory limits for each service based on their workload characteristics. Horizontal Pod Autoscaling (HPA) is configured with CPU and memory thresholds to automatically scale services under load. Performance optimization includes connection pooling for PostgreSQL, Kafka partitioning for parallel processing, and real-time metrics endpoints (/internal/metrics/realtime) for monitoring service health and performance.
+Efficient Resource Utilization
+Automatic Scaling Under Load
+Performance Monitoring and Optimization
+
