@@ -1,19 +1,30 @@
 @startuml
 autonumber
 actor "PDU Emitter" as Emitter
+actor "Client/UI" as Client
+actor "Data Acquisition Service" as DataAcq
 
+participant "Kong Gateway" as Kong
+participant "UDP NodePort Service" as UDPService
+participant "HTTP ClusterIP Service" as HTTPService
+participant "HealthController" as HealthCtrl
+participant "InternalMetricsController" as MetricsCtrl
 participant "UdpListenerService" as Listener
 participant "DisMetricsTracker" as Tracker
 participant "PduFactory" as Factory
 participant "KafkaProducerService" as Producer
 participant "Kafka Broker" as Kafka
 
-Emitter -> Listener : Sends UDP Packet
+== UDP PDU Ingestion Flow ==
+Emitter -> UDPService : Sends UDP Packet to NodePort 32000
+activate UDPService
+UDPService -> Listener : Routes to UDP port 3000
 activate Listener
 
 Listener -> Tracker : pduReceived()
 activate Tracker
-Tracker --> Listener :
+Tracker -> Tracker : Update timestamps and counters
+Tracker --> Listener : Metrics updated
 deactivate Tracker
 
 Listener -> Factory : createPdu(rawData)
@@ -23,6 +34,7 @@ deactivate Factory
 
 Listener -> Listener : pduToJson(pdu)
 activate Listener
+note right: Custom StringBuilder serialization\nfor performance optimization
 Listener --> Listener : Returns JSON String
 deactivate Listener
 
@@ -30,7 +42,60 @@ Listener -> Producer : sendMessage(json)
 activate Producer
 
 Producer -> Kafka : send("dis-pdus", json)
+activate Kafka
+Kafka --> Producer : Message acknowledged
+deactivate Kafka
 deactivate Producer
 deactivate Listener
+deactivate UDPService
+
+== Health Check Flow (Public) ==
+Client -> Kong : GET /api/ingestion/health
+activate Kong
+Kong -> HTTPService : Route to ClusterIP port 8080
+activate HTTPService
+HTTPService -> HealthCtrl : healthCheck()
+activate HealthCtrl
+HealthCtrl --> HTTPService : ResponseEntity("Service is up...")
+deactivate HealthCtrl
+HTTPService --> Kong : HTTP 200 OK
+deactivate HTTPService
+Kong --> Client : Health status response
+deactivate Kong
+
+== Real-time Metrics Flow (Internal) ==
+DataAcq -> HTTPService : GET /internal/metrics/realtime
+activate HTTPService
+HTTPService -> MetricsCtrl : getRealTimeDisMetrics()
+activate MetricsCtrl
+MetricsCtrl -> Tracker : getMetrics()
+activate Tracker
+Tracker -> Tracker : Calculate 60-second window stats
+Tracker --> MetricsCtrl : RealTimeMetrics object
+deactivate Tracker
+MetricsCtrl --> HTTPService : ResponseEntity<RealTimeMetrics>
+deactivate MetricsCtrl
+HTTPService --> DataAcq : Real-time metrics JSON
+deactivate HTTPService
+
+== Protected Endpoint Flow (Kong Gateway Authentication) ==
+Client -> Kong : GET /api/ingestion/management\nAuthorization: Bearer {jwt_token}
+activate Kong
+Kong -> Kong : Validate Firebase JWT token
+activate Kong
+note right: Custom jwt-firebase plugin\nvalidates token with Firebase
+Kong --> Kong : Extract user claims
+deactivate Kong
+
+Kong -> HTTPService : Forward authenticated request\nwith user headers
+activate HTTPService
+HTTPService -> MetricsCtrl : Process management request
+activate MetricsCtrl
+MetricsCtrl --> HTTPService : Management response
+deactivate MetricsCtrl
+HTTPService --> Kong : Response with data
+deactivate HTTPService
+Kong --> Client : Authenticated response
+deactivate Kong
 
 @enduml

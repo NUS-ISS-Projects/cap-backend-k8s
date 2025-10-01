@@ -30,7 +30,7 @@ UDP_PORT = 32000
 # DESTINATION_ADDRESS = "192.168.49.2"  # Minikube IP for local testing
 
 # Production GKE configuration - UDP traffic goes to node IP for NodePort service
-DESTINATION_ADDRESS = "34.126.131.150"  # GKE Node external IP for UDP NodePort
+DESTINATION_ADDRESS = "34.87.121.85"  # GKE Node external IP for UDP NodePort
 
 SIMULATION_DURATION_SECONDS = 9999
 PDUS_PER_SECOND_PER_ENTITY = 2

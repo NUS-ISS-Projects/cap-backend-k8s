@@ -1,0 +1,134 @@
+@startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam shadowing true
+skinparam roundcorner 20
+skinparam defaultFontName "Inter"
+
+package "com.cap_user_service.controller" {
+    class AuthController {
+        - userService: UserService
+        + registerUser(RegisterRequest): ResponseEntity<?>
+        + authenticateUser(LoginRequest): ResponseEntity<?>
+    }
+    class UserProfileController {
+        - userService: UserService
+        + getMyProfile(): ResponseEntity<?>
+    }
+    class UserSessionController {
+        - userSessionService: UserSessionService
+        + saveUserSession(UserSession): ResponseEntity<UserSession>
+        + getUserSession(String): ResponseEntity<UserSession>
+    }
+    class HealthController {
+        + healthCheck(): ResponseEntity<String>
+    }
+}
+
+package "com.cap_user_service.service" {
+    class UserService {
+        - firebaseApiKey: String
+        - userRepository: UserRepository
+        + saveUser(User): User
+        + loginUser(LoginRequest): String
+        + findUserById(String): Optional<User>
+        - getFirebaseIdTokenFromApi(String, String): String
+    }
+    class UserSessionService {
+        - userSessionRepository: UserSessionRepository
+        + saveUserSession(UserSession): UserSession
+        + getUserSessionByUserId(String): Optional<UserSession>
+    }
+}
+
+package "com.cap_user_service.security" {
+    class FirebaseTokenFilter {
+        - userService: UserService
+        + doFilterInternal(HttpServletRequest, HttpServletResponse, FilterChain): void
+    }
+    class SecurityConfig {
+        - firebaseTokenFilter: FirebaseTokenFilter
+        + filterChain(HttpSecurity): SecurityFilterChain
+    }
+}
+
+package "com.cap_user_service.repository" {
+    interface UserRepository <<JPA>> {
+        + save(User): User
+        + findById(String): Optional<User>
+    }
+    interface UserSessionRepository <<JPA>> {
+        + save(UserSession): UserSession
+        + findById(String): Optional<UserSession>
+    }
+}
+
+package "com.cap_user_service.model" {
+    class User <<Entity>> {
+        - userId: String
+        - username: String
+        - email: String
+        + generateId(): void
+    }
+    class UserSession <<Entity>> {
+        - userId: String
+        - userName: String
+        - name: String
+        - lastSession: LastSession
+    }
+    class LastSession <<Embeddable>> {
+        - date: String
+        - view: String
+    }
+}
+
+package "com.cap_user_service.payload" {
+    class LoginRequest <<DTO>> {
+        - email: String
+        - password: String
+    }
+    class RegisterRequest <<DTO>> {
+        - email: String
+        - password: String
+        - username: String
+    }
+    class JwtResponse <<DTO>> {
+        - token: String
+        - user: User
+    }
+}
+
+package "External Services" {
+    class "Firebase Auth" as FirebaseAuth
+    class "PostgreSQL" as Database
+}
+
+' Controller relationships
+AuthController ..> UserService : uses
+UserProfileController ..> UserService : uses
+UserSessionController ..> UserSessionService : uses
+
+' Service relationships
+UserService ..> UserRepository : uses
+UserSessionService ..> UserSessionRepository : uses
+UserService ..> FirebaseAuth : authenticates with
+
+' Security relationships
+FirebaseTokenFilter ..> UserService : uses
+SecurityConfig ..> FirebaseTokenFilter : configures
+
+' Repository relationships
+UserRepository ..> Database : persists to
+UserSessionRepository ..> Database : persists to
+
+' Model relationships
+UserSession *-- LastSession : embeds
+UserService ..> User : creates
+UserSessionService ..> UserSession : manages
+
+' Payload relationships
+AuthController ..> LoginRequest : receives
+AuthController ..> RegisterRequest : receives
+AuthController ..> JwtResponse : returns
+
+@enduml

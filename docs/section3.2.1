@@ -1,0 +1,74 @@
+3.2.1 Key Architectural Decisions for Physical Architecture
+The physical implementation of the platform was guided by several key decisions to ensure operational excellence, scalability, and resilience.
+Architectural Decision
+Rationale & Justification
+Key Benefits
+Utilize a Managed Kubernetes Service (GKE)
+Instead of self-hosting a Kubernetes cluster, the platform uses Google Kubernetes Engine (GKE), a managed service. This offloads the significant operational burden of managing, securing, and scaling the Kubernetes control plane to Google. It allows the development team to focus on the application workloads rather than the underlying orchestration infrastructure, while still benefiting from a production-grade, highly available platform.
+Reduced Operational Overhead
+High Availability & Reliability
+Seamless GCP Integration
+Use Differentiated Kubernetes Workloads (Deployment vs. StatefulSet)
+The choice of Kubernetes controller is tailored to the statefulness of the application. Stateless microservices (data-ingestion, data-processing, data-acquisition, cap-user-service, cap-pdu-prediction-service, kong-gateway) use Deployments, which are ideal for managing interchangeable pods and enable rolling updates. Services requiring stable network identities and persistent storage, such as PostgreSQL, Kafka, and Zookeeper, use StatefulSets to ensure predictable pod names, ordered operations, and persistent volume claims, which is critical for their clustering, coordination logic, and data persistence.
+Correct State Management
+Stability for Stateful Services
+Flexibility for Stateless Services
+Implement a Hybrid Network Exposure Strategy (Kong Gateway & NodePort)
+Acknowledging that the system must handle both standard web traffic and specialized UDP streams, a hybrid networking approach was chosen. Kong Gateway provides a sophisticated API Gateway with L7 load balancing for all HTTP/S traffic, offering path-based routing, Firebase JWT authentication, CORS policies, and rate limiting across all environments (local, staging, production). For the high-throughput, non-HTTP UDP data, a NodePort service directly exposes the ingestion port on each GKE node, providing a more direct and performant path for this specialized traffic that bypasses the API Gateway.
+Efficient Routing for All Traffic Types
+Enterprise-Grade API Management (via Kong Gateway)
+High-Performance Data Ingestion (via NodePort)
+Adopt Kong Gateway for Unified API Management
+Kong Gateway was selected as the API Gateway solution to replace traditional Kubernetes Ingress controllers, providing enterprise-grade API management capabilities across all environments. Kong Gateway offers advanced features including Firebase JWT authentication through a custom jwt-firebase plugin, path-based routing to backend services (/api/acquisition/*, /api/ingestion/*, /api/processing/*, /api/auth/*, /api/users/*, /api/prediction/*), environment-specific CORS policies and rate limiting, and comprehensive Prometheus metrics collection. This unified approach ensures consistent behavior across local development (Minikube with NodePort), staging, and production (GKE with LoadBalancer) environments.
+Unified API Management Across Environments
+Advanced Security & Authentication
+Comprehensive Monitoring & Observability
+Integrate Firebase Authentication for Enterprise Security
+Firebase Authentication was chosen to provide enterprise-grade user management with JWT token validation, eliminating the need to build custom authentication infrastructure. The cap-user-service integrates with Firebase project "cap-backend-user" for user registration, login, and session management, while Kong Gateway enforces JWT validation across all protected endpoints through its custom jwt-firebase plugin. This approach provides secure, scalable authentication with minimal operational overhead and seamless integration between the API Gateway and user management service.
+Enterprise-Grade Security
+Reduced Development Complexity
+Scalable User Management
+Implement Multi-Language Microservice Architecture
+The platform strategically employs a multi-language architecture to leverage the best tools for specific use cases. Java/Spring Boot is used for core data processing services (data-ingestion, data-processing, data-acquisition, cap-user-service) due to its robust enterprise features, excellent Kafka integration, and mature ecosystem. Python/Flask is used for the cap-pdu-prediction-service to leverage the rich ML/AI ecosystem including scikit-learn, transformers, and RAG capabilities. Kong Gateway orchestrates communication between these heterogeneous services, providing a unified API interface regardless of the underlying technology stack.
+Technology Optimization for Use Cases
+Leveraging Language-Specific Ecosystems
+Unified API Interface
+Implement Horizontal Pod Autoscaling (HPA) Strategy
+Horizontal Pod Autoscalers are strategically configured for all stateless microservices to provide elastic scalability based on real-time demand. Each service has tailored HPA configurations: data-ingestion-service (70% CPU, 1-2 replicas), data-processing-service (85% CPU, 1-2 replicas), data-acquisition-service (85% CPU, 1-2 replicas), cap-user-service (85% CPU + 90% memory, 1-2 replicas), and cap-pdu-prediction-service (70% CPU + 85% memory, 1 replica only for ML model consistency). This approach ensures optimal resource utilization while maintaining performance under varying loads and provides automatic cost optimization during low-traffic periods.
+Elastic Scalability
+Cost Optimization
+Performance Under Load
+Adopt Persistent Volume Claims (PVC) for Data Persistence
+Critical stateful services utilize Persistent Volume Claims to ensure data durability across pod restarts and node failures. PostgreSQL is configured with a 20Gi PVC using the standard-rwo storage class for reliable data persistence. Kafka and Zookeeper StatefulSets are designed to support PVCs for their data directories in production environments. This strategy separates compute from storage, enabling pod mobility while guaranteeing data integrity and supporting backup/recovery operations essential for production workloads.
+Data Durability & Integrity
+Pod Mobility & Resilience
+Backup & Recovery Capabilities
+Utilize GitHub Container Registry (GHCR) for Image Management
+GitHub Container Registry (GHCR) was selected as the container image repository to maintain tight integration with the source code and CI/CD pipeline. All container images follow the naming convention `ghcr.io/nus-iss-projects/cap-backend-{service-name}/cap-backend-{service-name}:latest`, providing clear traceability between code commits and deployed images. GHCR integration with GitHub Actions enables seamless image building, vulnerability scanning, and automated deployment workflows while maintaining security through GitHub's access control mechanisms.
+Integrated Development Workflow
+Image Traceability & Versioning
+Automated Security Scanning
+Implement Comprehensive Health Monitoring Strategy
+All services implement standardized health monitoring through Kubernetes readiness and liveness probes targeting dedicated `/health` endpoints (e.g., `/api/acquisition/health`, `/api/ingestion/health`). Readiness probes ensure traffic routing only to fully initialized pods, while liveness probes enable automatic restart of unresponsive containers. The cap-pdu-prediction-service has extended probe configurations (180s initial delay, 15s timeout) to accommodate ML model loading. This comprehensive health monitoring enables self-healing capabilities and ensures high availability through early detection of service degradation.
+Self-Healing Infrastructure
+High Availability Assurance
+Early Problem Detection
+Adopt Fine-Grained Resource Management
+Each microservice has carefully tuned CPU and memory resource requests and limits based on their specific workload characteristics. For example, the cap-pdu-prediction-service has higher resource allocation (300m-1000m CPU, 1.5Gi-2Gi memory, 2Gi-3Gi ephemeral storage) to support ML model operations, while data processing services use moderate allocations (50m-300m CPU, 256Mi-768Mi memory). This fine-grained approach prevents resource contention, ensures predictable performance, and enables efficient cluster resource utilization while supporting quality of service guarantees.
+Predictable Performance
+Efficient Resource Utilization
+Quality of Service Guarantees
+Implement Environment-Specific Configuration Management
+The platform employs Kustomize overlays to manage environment-specific configurations across local development, staging, and production environments. Each environment has tailored settings: local development uses simplified configurations with NodePort services, staging includes moderate security and DAST scanning, and production features enhanced security, higher rate limits, and high-availability configurations. This approach enables consistent base configurations while allowing environment-specific optimizations without code duplication or configuration drift.
+Configuration Consistency
+Environment-Specific Optimization
+Deployment Reliability
+Adopt a GitOps Workflow for Deployments
+The system's deployment process is fully automated using a GitOps model. The entire state of the Kubernetes application is defined declaratively in a Git repository using Kustomize. A GitHub Actions pipeline automatically synchronizes the cluster's state with the configuration in the repository whenever a new release tag (*-staging or *-release) is pushed. This makes Git the single source of truth, creating an auditable, repeatable, and highly reliable deployment mechanism that minimizes manual intervention. The pipeline includes comprehensive rollout verification, automatic rollback capabilities, and DAST security scanning for staging environments.
+Auditability & Traceability
+Increased Deployment Speed & Reliability
+Consistent Environments
+Automated Security Integration
+
+
+

@@ -1,0 +1,237 @@
+5.3 Continuous Delivery (CD)
+Continuous Delivery (CD) automates the release of validated code to an environment. The project has a robust CD pipeline defined in .github/workflows/CD.yaml.
+name: Deploy DIS Platform to GKE and DAST Scan
+
+
+on:
+  push:
+    tags:
+      - '*-release' # e.g., v1.0-release
+      - '*-staging' # e.g., v1.1-staging
+
+
+env:
+  PROJECT_ID: ${{ secrets.PROJECT_ID }}
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER }}
+  GKE_ZONE: ${{ secrets.GKE_ZONE }}
+  GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+  GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+  GCLOUD_AUTH: ${{ secrets.GCLOUD_AUTH }}
+  STAGING_APP_URL: ${{ secrets.STAGING_APP_URL }}
+
+
+jobs:
+  deploy-dis-platform-to-gke:
+    name: Deploy DIS Platform to GKE
+    runs-on: ubuntu-latest
+    outputs: # Define outputs for this job
+      deployment_status: ${{ steps.rollout_status.outputs.failed_components == '' && 'success' || 'failure' }}
+    steps:
+      # Step 1: Checkout code
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+
+      # Step 2: Authenticate to GCP
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ env.GCLOUD_AUTH }}'
+
+
+      # Step 3: Set up Cloud SDK
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+
+      # Step 4: Install the GKE gcloud auth plugin
+      - name: Install gke-gcloud-auth-plugin
+        run: |
+          gcloud components install gke-gcloud-auth-plugin --quiet
+
+
+      # Step 5: Enable the GKE Auth Plugin for kubectl
+      - name: Configure GKE Auth Plugin
+        run: echo "export USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $GITHUB_ENV
+
+
+      # Step 6: Get GKE credentials
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER }} --zone ${{ env.GKE_ZONE }} --project ${{ env.PROJECT_ID }}
+
+
+      # Step 6a: Wait for Kong Gateway to be ready after deployment
+      - name: Wait for Kong Gateway
+        run: |
+          echo "Kong Gateway will be deployed with the application manifests"
+
+
+      # Step 7: Create the GHCR Docker config file for use with Kustomize secretGenerator
+      - name: Create GHCR Docker config for Kustomize
+        run: |
+          mkdir -p k8s/base # Ensure the directory exists
+          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n "${{ env.GHCR_USERNAME }}:${{ env.GHCR_TOKEN }}" | base64 -w0)"'"}}}' > k8s/base/.dockerconfigjson
+
+
+      # Step 8: Install Kustomize
+      - name: Install Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+
+      # Step 8a: Create Firebase service account secret
+      - name: Create Firebase service account secret
+        run: |
+          kubectl create secret generic firebase-service-account \
+            --from-literal=service-account-b64='${{ secrets.FIREBASE_SA_B64_CI }}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+
+      # Step 9: Apply Kustomize for production
+      - name: Apply Kubernetes Manifests for production
+        if: contains(github.ref, '-release')
+        run: |
+          kustomize build ./k8s/overlays/prod | kubectl apply -f -
+
+
+      # Step 10: Apply Kustomize for staging
+      - name: Apply Kubernetes Manifests for staging
+        if: contains(github.ref, '-staging')
+        run: |
+          kustomize build ./k8s/overlays/staging | kubectl apply -f -
+
+
+      # Step 11: Check the deployment status for DIS platform services
+      - name: Check Rollout Status for DIS Platform
+        id: rollout_status # This ID is crucial for the job output
+        run: |
+          deployments=("data-ingestion-service" "data-processing-service" "data-acquisition-service" "cap-user-service" "cap-pdu-prediction-service" "kong-gateway")
+          statefulsets=("kafka" "zookeeper" "postgres")
+          failed_components_list=""
+
+
+          for dep_name in "${deployments[@]}"; do
+            echo "Checking rollout status for deployment $dep_name..."
+            if ! kubectl rollout status deployment/$dep_name --namespace default --timeout=5m; then
+              echo "Rollout failed for deployment/$dep_name"
+              failed_components_list="${failed_components_list}deployment/$dep_name,"
+            fi
+          done
+
+
+          for sts_name in "${statefulsets[@]}"; do
+            echo "Checking rollout status for statefulset $sts_name..."
+            if ! kubectl rollout status statefulset/$sts_name --namespace default --timeout=5m; then
+              echo "Rollout failed for statefulset/$sts_name"
+              failed_components_list="${failed_components_list}statefulset/$sts_name,"
+            fi
+          done
+
+
+          if [ -n "$failed_components_list" ]; then
+            failed_components_list=${failed_components_list%,}
+            echo "::set-output name=failed_components::$failed_components_list"
+            echo "Deployment failed for the following components: $failed_components_list"
+            exit 1
+          else
+            echo "All DIS platform components deployed successfully!"
+            echo "::set-output name=failed_components::" # Empty string if success
+          fi
+
+
+      # Step 12: Rollback deployment if any service fails
+      - name: Rollback Failed Components
+        if: failure() && steps.rollout_status.outputs.failed_components != ''
+        run: |
+          IFS=',' read -r -a components_to_rollback <<< "${{ steps.rollout_status.outputs.failed_components }}"
+          for component in "${components_to_rollback[@]}"; do
+            echo "Attempting to rollback $component..."
+            if [[ $component == deployment/* ]]; then
+              kubectl rollout undo $component --namespace default
+              echo "Rolled back $component."
+            elif [[ $component == statefulset/* ]]; then
+              kubectl rollout undo $component --namespace default
+              echo "Attempted rollback for $component. Review its status manually."
+            fi
+          done
+          echo "Rollback process attempted for failed components."
+
+
+      # Step 13: Clean up
+      - name: Clean up temporary files
+        if: always()
+        run: |
+          rm -f k8s/base/.dockerconfigjson
+          echo "Cleaned up temporary files."
+
+
+
+
+  dast-baseline-scan:
+    name: DAST Baseline Scan (OWASP ZAP)
+    runs-on: ubuntu-latest
+    needs: deploy-dis-platform-to-gke # Depends on the deployment job
+    # Only run if:
+    # 1. The deploy-dis-platform-to-gke job itself succeeded (implied by `success()` if `needs` is used, but good to be explicit with output)
+    # 2. The tag contains '-staging'
+    # 3. The deployment_status output from the deploy job is 'success'
+    if: success() && contains(github.ref, '-staging') && needs.deploy-dis-platform-to-gke.outputs.deployment_status == 'success'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.11.0
+        with:
+          target: ${{ env.STAGING_APP_URL }}
+          cmd_options: '-J report.json -r report.html -x report.xml'
+          # fail_action: true # Consider enabling this later
+
+
+      - name: Upload ZAP Scan Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline-scan-report
+          path: |
+            report.html
+            report.json
+            report.xml
+
+Figure 5.3.a: CD yaml
+Automation Tool: The pipeline is implemented using GitHub Actions.
+Deployment Trigger: As defined by the source control strategy, deployments are triggered automatically when a Git tag matching *-staging or *-release is pushed to the repository.
+Environment Targeting: The pipeline supports deployments to different environments (Staging and Production) based on the suffix of the pushed tag.
+Deployment Mechanism:
+The pipeline authenticates to Google Cloud Platform using a service account key stored as a GitHub secret (GCLOUD_AUTH).
+It configures kubectl to target the correct GKE cluster (dis-cluster).
+It dynamically creates a Kubernetes secret (ghcr-secret) to allow GKE to pull images from the private GHCR repository.
+It uses Kustomize to apply the Kubernetes configurations. This is a best practice that allows managing a base set of configurations while applying environment-specific patches (e.g., different resource limits, configurations, or image tags) via overlays.
+Post-Deployment Verification & Safety:
+Rollout Status Check: After applying the manifests, the pipeline intelligently waits and checks the rollout status of all Deployments (data-ingestion-service, data-processing-service, data-acquisition-service, cap-user-service, cap-pdu-prediction-service, kong-gateway) and StatefulSets (kafka, zookeeper, postgres), ensuring they become healthy before declaring the deployment a success.
+Automated Rollback: If any component fails its rollout check, the pipeline automatically triggers a rollback step that executes kubectl rollout undo on the failed components, reverting to the last stable version and minimizing downtime.
+DAST Scans: For staging deployments, a DAST job is automatically triggered post-deployment, scanning the application with OWASP ZAP and uploading the report as a build artifact. This integrates security testing directly into the delivery process.
+
+Service-Specific Deployment Considerations:
+CAP PDU Prediction Service: This ML-powered service has specialized deployment requirements:
+- Resource Allocation: Configured with higher resource limits (1000m CPU, 2Gi memory, 3Gi ephemeral storage) to accommodate machine learning models and tokenizer files
+- Extended Health Check Timeouts: Uses 180-second initialDelaySeconds and 15-second timeoutSeconds for both readiness and liveness probes to allow sufficient time for model loading and RAG system initialization
+- Single-Pod Deployment Strategy: Configured with maxSurge: 0 in the rolling update strategy to ensure only one pod exists at any time, preventing resource conflicts during model loading
+- Ephemeral Storage Management: Includes ephemeral storage limits (3Gi limit, 2Gi request) to prevent pod eviction due to large ML model files and temporary data caching
+- Horizontal Pod Autoscaler: Configured with maxReplicas: 1 to maintain single-instance operation while still providing CPU (70%) and memory (85%) monitoring thresholds
+
+DIS Platform Services Overview:
+The CD pipeline deploys the following core services that comprise the DIS (Distributed Interactive Simulation) platform:
+
+1. Data Ingestion Service: Receives and processes incoming DIS PDU (Protocol Data Unit) messages via UDP, forwarding them to Kafka for downstream processing
+2. Data Processing Service: Consumes PDU messages from Kafka, parses different PDU types (Entity State, Fire Event, Collision, Detonation, etc.), and stores structured data in PostgreSQL
+3. Data Acquisition Service: Provides REST APIs for retrieving processed DIS data, including entity states, fire events, collision records, and real-time metrics
+4. CAP User Service: Handles user authentication, registration, and session management with Firebase integration for secure access control
+5. CAP PDU Prediction Service: ML-powered service providing predictive analytics and RAG (Retrieval-Augmented Generation) capabilities for DIS data analysis and intelligent querying
+6. Kong Gateway: API gateway providing centralized routing, authentication, and security for all platform services
+7. Supporting Infrastructure: Kafka (message streaming), Zookeeper (Kafka coordination), and PostgreSQL (data persistence)

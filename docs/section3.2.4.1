@@ -1,0 +1,252 @@
+3.2.4.1 CAP User Service
+The CAP User Service is a comprehensive security and user management component of the platform, designed to handle user authentication, session management, and user profile operations with Firebase integration. It provides enterprise-grade authentication through Firebase JWT tokens and integrates seamlessly with Kong Gateway's authentication layer to ensure consistent security across the entire platform.
+
+## Service Overview
+
+The CAP User Service is a Java/Spring Boot microservice that manages:
+- User registration and authentication via Firebase
+- JWT token validation and management
+- User profile and session management
+- Integration with Kong Gateway for centralized authentication
+- PostgreSQL database storage for user data and sessions
+
+## Architecture Integration
+
+### Firebase Authentication Integration
+- Firebase Project: "cap-backend-user"
+- Firebase JWT token generation and validation
+- Automatic Firebase service account configuration via base64-encoded credentials
+- Integration with Kong Gateway's jwt-firebase plugin for edge-level authentication
+
+### Kong Gateway Integration
+- Public endpoints: /api/auth/login, /api/auth/register, /api/user/health
+- Protected endpoints: /api/users/*, /api/user-sessions/*
+- Automatic JWT validation at Kong Gateway level
+- User context forwarding via headers (X-User-ID, X-User-Email, X-Consumer-ID)
+
+### Database Schema
+The service manages two primary database tables in PostgreSQL:
+
+**users table:**
+- userId: VARCHAR(36) (UUID primary key, auto-generated)
+- username: VARCHAR(255)
+- email: VARCHAR(255)
+
+**user_sessions table:**
+- userId: VARCHAR(36) (foreign key to users table)
+- userName: VARCHAR(255)
+- name: VARCHAR(255)
+- date: VARCHAR(255) (embedded from LastSession)
+- view: VARCHAR(255) (embedded from LastSession)
+
+## Use Cases
+
+The following table outlines the primary use cases for the CAP User Service:
+
+| Use Case ID | Name | Actor(s) | Description |
+|-------------|------|----------|-------------|
+| UC-USER-01 | User Registration | User | Register new users with Firebase authentication, creating user profiles in PostgreSQL |
+| UC-USER-02 | User Authentication | User | Authenticate users via Firebase, generating JWT tokens for secure access |
+| UC-USER-03 | User Profile Management | User | Retrieve and manage user profile information stored in PostgreSQL |
+| UC-USER-04 | Session Management | User, Internal Services | Create and retrieve user session data including last accessed pages and views |
+| UC-USER-05 | JWT Token Validation | Kong Gateway, Internal Services | Validate Firebase JWT tokens for protected endpoint access |
+| UC-USER-06 | Health Monitoring | Monitoring Systems | Provide health status for service availability monitoring |
+
+## API Endpoints
+
+### Public Endpoints (No Authentication Required)
+
+**User Registration**
+- POST /api/auth/register
+- Request Body: {"email": "string", "password": "string", "username": "string"}
+- Response: User registration confirmation with Firebase user creation
+
+**User Login**
+- POST /api/auth/login
+- Request Body: {"email": "string", "password": "string"}
+- Response: {"token": "firebase_jwt_token", "user": {...}}
+
+**Health Check**
+- GET /api/user/health
+- Response: Service health status
+
+### Protected Endpoints (Firebase JWT Required)
+
+**User Profile**
+- GET /api/users/profile
+- Headers: Authorization: Bearer {firebase_jwt_token}
+- Response: User profile information from PostgreSQL
+
+**Session Management**
+- POST /api/user-sessions
+- Headers: Authorization: Bearer {firebase_jwt_token}
+- Request Body: {"userId": "string", "userName": "string", "name": "string", "lastSession": {"date": "string", "view": "string"}}
+- Response: Created session information
+
+- GET /api/user-sessions/{userId}
+- Headers: Authorization: Bearer {firebase_jwt_token}
+- Response: User session information
+
+## Technical Implementation
+
+### Spring Security Configuration
+- SecurityConfig.java: Configures HTTP security with Firebase token validation
+- FirebaseTokenFilter.java: Custom filter for Firebase JWT token processing
+- Public endpoints bypass authentication, protected endpoints require valid JWT tokens
+
+### Service Layer Architecture
+- UserService.java: Core business logic for user management and Firebase integration
+- UserSessionService.java: Session management operations
+- UserRepository.java: JPA repository for user data access
+- UserSessionRepository.java: JPA repository for session data access
+
+### Data Models
+- User.java: JPA entity for user data with UUID auto-generation
+- UserSession.java: JPA entity for session management
+- LastSession.java: Embeddable entity for session metadata (date, view)
+
+### Firebase Configuration
+- FirebaseConfig.java: Configures Firebase app with service account credentials
+- Base64-encoded service account credentials for secure deployment
+- Automatic Firebase app initialization with Google credentials
+
+## Deployment Configuration
+
+### Container Specifications
+- Image: ghcr.io/nus-iss-projects/cap-user-service/cap-user-service:latest
+- Port: 8080 (HTTP)
+- Resources: CPU 100m-300m, Memory 384Mi-768Mi
+- Health Probes: /api/user/health (100s initial delay, 10s timeout)
+
+### Environment Variables
+- Firebase integration with project "cap-backend-user"
+- PostgreSQL connection for user data storage
+- Spring Boot configuration for production deployment
+
+### Horizontal Pod Autoscaling
+- HPA Configuration: 1-2 replicas, 85% CPU + 90% Memory utilization thresholds
+- Automatic scaling based on authentication load and user activity
+
+## Security Features
+
+### Authentication Flow
+1. User registers/logs in via Firebase authentication endpoints
+2. Firebase generates JWT token with user claims
+3. Kong Gateway validates JWT tokens for protected endpoints using custom jwt-firebase plugin
+4. User context forwarded to backend services via headers (X-User-ID, X-User-Email, X-Consumer-ID)
+5. Spring Security validates tokens at application level for additional security
+6. FirebaseTokenFilter processes both Kong headers and direct Firebase tokens for dual authentication support
+
+### Data Protection
+- Secure password handling via Firebase authentication
+- JWT token-based stateless authentication with automatic key rotation
+- User data encryption in transit and at rest
+- Session management with secure token validation
+- CORS configuration with credential handling and custom headers
+- Environment-specific rate limiting (staging: 5000/min, production: 10000/min)
+
+### Security Scanning and Compliance
+- DAST (Dynamic Application Security Testing) integration with OWASP ZAP
+- Automated security scanning in CI/CD pipeline for staging deployments
+- Proactive vulnerability detection and reporting
+- Security artifact generation and analysis
+
+## Testing and Quality Assurance
+
+### Comprehensive Test Coverage
+The CAP User Service includes 15 comprehensive test files covering all major components:
+
+**Controller Tests (3 files):**
+- AuthControllerTest.java: Authentication endpoint testing
+- UserProfileControllerTest.java: Profile management testing with @WebMvcTest
+- UserSessionControllerTest.java: Session management API testing
+
+**Model Tests (3 files):**
+- UserTest.java: User entity validation and behavior
+- UserSessionTest.java: Session entity testing
+- LastSessionTest.java: Embedded session metadata testing
+
+**Security Tests (1 file):**
+- FirebaseTokenFilterTest.java: JWT token processing and security filter testing
+
+**Service Tests (2 files):**
+- UserServiceTest.java: Core business logic testing with mock repositories
+- UserSessionServiceTest.java: Session management service testing
+
+**Payload Tests (5 files):**
+- LoginRequestTest.java, RegisterRequestTest.java, TokenRequestTest.java: Request validation
+- JwtResponseTest.java, MessageResponseTest.java: Response structure testing
+
+**Integration Tests (1 file):**
+- UserServiceApplicationTests.java: Full application context testing
+
+### Quality Metrics
+- JaCoCo code coverage reporting integration
+- SonarCloud static code analysis
+- Automated test execution in CI/CD pipeline
+- Part of platform-wide 75 unit and integration tests across all services
+
+## Integration with Platform Services
+
+### Kong Gateway Integration
+- Centralized authentication at API Gateway level with custom jwt-firebase plugin
+- Selective endpoint protection (public vs protected)
+- User context forwarding to downstream services
+- Rate limiting and CORS policy enforcement
+- Prometheus metrics collection for monitoring
+- Environment-specific configurations (local, staging, production)
+
+### Database Integration
+- PostgreSQL storage for user profiles and session data
+- ACID compliance for data integrity
+- Optimized queries for user lookup and session management
+- Separation of authentication (Firebase) and user data (PostgreSQL)
+- UUID-based primary keys with automatic generation
+
+### Monitoring and Observability
+- Standardized health endpoints for Kubernetes probes (/api/user/health)
+- Integration with platform monitoring systems
+- Comprehensive logging for authentication events
+- Performance metrics for user operations
+- Kong Admin API integration for configuration management
+
+### CI/CD Integration
+- GitHub Actions pipeline with automated building and testing
+- Container image creation and publishing to GHCR
+- Kubernetes deployment with rollout verification
+- Automated rollback capabilities for failed deployments
+- Environment-specific deployment configurations via Kustomize overlays
+
+## Production Deployment
+
+### Container Specifications
+- Base Image: openjdk:17-jdk
+- Application JAR: user-service-0.0.1-SNAPSHOT.jar
+- Exposed Port: 8080
+- Health Check Endpoint: /api/user/health
+
+### Environment-Specific Configurations
+**Local Development:**
+- Image: cap-user-service:latest with imagePullPolicy: Never
+- No image pull secrets required
+- NodePort service access via dis.local:32080
+
+**Staging Environment:**
+- LoadBalancer service with moderate rate limiting (5000/min)
+- DAST security scanning integration
+- Firebase JWT authentication with project "cap-backend-user"
+
+**Production Environment:**
+- Enhanced security and high-availability configurations
+- Stricter rate limiting (10000/min)
+- Comprehensive monitoring and alerting
+
+### Scalability and Performance
+- HPA Configuration: 1-2 replicas based on 85% CPU + 90% Memory utilization
+- Automatic scaling based on authentication load and user activity
+- Resource allocation: CPU 100m-300m, Memory 384Mi-768Mi
+- Health probes with 100s initial delay and 10s timeout
+
+Figure 3.2.4.1.a: CAP User Service Architecture
+
+Figure 3.2.4.1.b: User Authentication Flow with Firebase and Kong Gateway

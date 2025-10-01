@@ -13,50 +13,117 @@ cloud "Google Cloud Platform" {
             component "API Server"
             component "Scheduler"
             component "Controller Manager"
+            component "HPA Controller"
         }
 
         node "GKE Worker Node(s)" as GKE_Node {
             package "Stateless Workloads (Deployments)" {
                 node "Pod(s): data-acquisition" as Pod_Acquisition {
-                    component "data-acquisition-service"
+                    component "data-acquisition-service\n(Java/Spring Boot)\nPort: 8080\nImage: ghcr.io/.../cap-backend-data-acquisition"
                 }
                 node "Pod(s): data-processing" as Pod_Processing {
-                    component "data-processing-service"
+                    component "data-processing-service\n(Java/Spring Boot)\nPort: 8080\nImage: ghcr.io/.../cap-backend-data-processing"
                 }
                 node "Pod(s): data-ingestion" as Pod_Ingestion {
-                    component "data-ingestion-service"
+                    component "data-ingestion-service\n(Java/Spring Boot)\nHTTP: 8080, UDP: 3000\nImage: ghcr.io/.../cap-backend-data-ingestion"
+                }
+                node "Pod(s): cap-user-service" as Pod_User {
+                    component "cap-user-service\n(Java/Spring Boot)\nPort: 8080\nImage: ghcr.io/.../cap-user-service"
+                }
+                node "Pod(s): cap-pdu-prediction" as Pod_Prediction {
+                    component "cap-pdu-prediction-service\n(Python/Flask)\nPort: 5001\nImage: ghcr.io/.../cap-pdu-prediction"
+                }
+                node "Pod(s): kong-gateway" as Pod_Kong {
+                    component "kong-gateway\n(API Gateway)\nHTTP: 8000, Admin: 8001\nFirebase JWT Plugin"
                 }
             }
 
-            package "Stateful Workloads" {
+            package "Stateful Workloads (StatefulSets)" {
                  node "Pod: postgres" as Pod_DB {
-                    database "PostgreSQL"
+                    database "PostgreSQL\n(postgres:14)\nPort: 5432\nStorage: 20Gi PVC"
                 }
                 node "Pod(s): kafka" as Pod_Kafka {
-                    queue "Kafka"
+                    queue "Apache Kafka\n(confluentinc/cp-kafka:7.4.0)\nPort: 9092\nTopic: dis-pdus"
                 }
                 node "Pod(s): zookeeper" as Pod_ZK {
-                    component "Zookeeper"
+                    component "Zookeeper\n(confluentinc/cp-zookeeper:7.4.0)\nPort: 2181"
                 }
             }
-        }
-    }
 
-    package "GKE Networking" {
-        node "GKE Ingress" as Ingress
-        node "UDP NodePort Service" as NodePort
+            package "Autoscaling (HPAs)" {
+                node "HPA: data-ingestion-hpa" as HPA_Ingestion
+                node "HPA: data-processing-hpa" as HPA_Processing
+                node "HPA: data-acquisition-hpa" as HPA_Acquisition
+                node "HPA: cap-user-service-hpa" as HPA_User
+                node "HPA: cap-pdu-prediction-hpa" as HPA_Prediction
+            }
+        }
+
+        package "Kubernetes Services" {
+            node "Service (LoadBalancer)\nkong-gateway-service" as Svc_Kong
+            node "Service (NodePort)\ndata-ingestion-service-udp" as Svc_UDP
+            node "Service (ClusterIP)\ndata-acquisition-service" as Svc_Acquisition
+            node "Service (ClusterIP)\ndata-ingestion-service" as Svc_Ingestion
+            node "Service (ClusterIP)\ndata-processing-service" as Svc_Processing
+            node "Service (ClusterIP)\ncap-user-service" as Svc_User
+            node "Service (ClusterIP)\ncap-pdu-prediction-service" as Svc_Prediction
+            node "Service (ClusterIP)\npostgres" as Svc_DB
+            node "Service (Headless)\nkafka" as Svc_Kafka
+            node "Service (Headless)\nzookeeper" as Svc_ZK
+        }
     }
 }
 
 actor "Client / UI" as Client
 actor "DIS PDU Emitter" as Emitter
+actor "Developer" as Developer
 
-Client --> Ingress : HTTP/S API Calls
-Emitter --> NodePort : UDP PDU Streams
+' External Traffic Flow
+Client --> Svc_Kong : HTTPS API Calls\n(Firebase JWT Auth)
+Emitter --> Svc_UDP : UDP PDU Streams\n(Port 32000 → 3000)
 
-Ingress --> Pod_Acquisition
-NodePort --> Pod_Ingestion
+' Kong Gateway Routing
+Svc_Kong --> Pod_Kong : LoadBalancer
+Pod_Kong --> Svc_Acquisition : /api/acquisition/*
+Pod_Kong --> Svc_Ingestion : /api/ingestion/*
+Pod_Kong --> Svc_Processing : /api/processing/*
+Pod_Kong --> Svc_User : /api/auth/*, /api/users/*
+Pod_Kong --> Svc_Prediction : /api/prediction/*
 
+' Service to Pod Routing
+Svc_UDP --> Pod_Ingestion : UDP Traffic
+Svc_Acquisition --> Pod_Acquisition
+Svc_Ingestion --> Pod_Ingestion
+Svc_Processing --> Pod_Processing
+Svc_User --> Pod_User
+Svc_Prediction --> Pod_Prediction
+Svc_DB --> Pod_DB
+Svc_Kafka --> Pod_Kafka
+Svc_ZK --> Pod_ZK
+
+' Data Flow
+Pod_Ingestion --> Svc_Kafka : Publish JSON PDUs
+Pod_Processing --> Svc_Kafka : Consume JSON PDUs
+Pod_Processing --> Svc_DB : Store Records
+Pod_Acquisition --> Svc_DB : Query Data
+Pod_Acquisition --> Svc_Ingestion : Real-time Metrics
+Pod_Prediction --> Svc_DB : ML Analysis
+Pod_User --> Svc_DB : User Data
+
+' HPA Scaling
+GKE_Control_Plane --> HPA_Ingestion : Manages
+GKE_Control_Plane --> HPA_Processing : Manages
+GKE_Control_Plane --> HPA_Acquisition : Manages
+GKE_Control_Plane --> HPA_User : Manages
+GKE_Control_Plane --> HPA_Prediction : Manages
+HPA_Ingestion --> Pod_Ingestion : Scales (1-2 replicas)
+HPA_Processing --> Pod_Processing : Scales (1-2 replicas)
+HPA_Acquisition --> Pod_Acquisition : Scales (1-2 replicas)
+HPA_User --> Pod_User : Scales (1-2 replicas)
+HPA_Prediction --> Pod_Prediction : Scales (1 replica only)
+
+' CI/CD Flow
+Developer --> GKE_Control_Plane : Deploy via GitHub Actions\n(kubectl apply -k)
 GKE_Control_Plane ..> GKE_Node : Manages Pods & Resources
 
 @enduml

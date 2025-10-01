@@ -86,8 +86,8 @@ NC='\033[0m' # No Color
 # Configuration
 # Get Minikube IP dynamically for local testing
 MINIKUBE_IP=$(minikube ip 2>/dev/null || echo "localhost")
-KONG_URL="http://${MINIKUBE_IP}:32080"  # Local Minikube
-# KONG_URL="http://34.87.65.17:8000"  # GKE external IP
+# KONG_URL="http://${MINIKUBE_IP}:32080"  # Local Minikube
+KONG_URL="http://34.126.156.143:8000"  # GKE external IP
 
 # Generate unique test identifiers for each run
 TEST_RUN_ID="$(date +%s)_$(shuf -i 1000-9999 -n 1)"

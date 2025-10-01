@@ -1,0 +1,226 @@
+# 3.2.4.2 Data Ingestion Service
+
+The Data Ingestion Service is the primary entry point for all live simulation data into the platform. It is a lightweight, specialized Java/Spring Boot microservice designed for high-throughput network I/O and immediate data handoff. Its core responsibilities are to listen for raw DIS PDU packets via UDP, perform initial decoding using the DIS protocol library, and publish the data into the Kafka message broker for asynchronous processing. The service integrates with Kong Gateway for HTTP endpoint management and provides comprehensive real-time metrics for system observability.
+
+## Service Overview
+
+The Data Ingestion Service is a Java/Spring Boot microservice that manages:
+- High-performance UDP packet reception for DIS PDU streams
+- Real-time PDU decoding using edu.nps.moves.disutil.PduFactory
+- Asynchronous Kafka message publishing to "dis-pdus" topic
+- Real-time ingestion metrics tracking and reporting
+- Integration with Kong Gateway for HTTP endpoint security
+- Health monitoring and observability endpoints
+
+## Architecture Integration
+
+### Kong Gateway Integration
+- Public endpoints: /api/ingestion/health (health monitoring)
+- Protected endpoints: /api/ingestion/* (management operations with Firebase JWT)
+- Internal endpoints: /internal/metrics/realtime (service-to-service communication, not exposed via Kong)
+- Automatic JWT validation at Kong Gateway level for protected endpoints
+- CORS and rate limiting policies applied at gateway level
+
+### Kafka Integration
+- Publisher to "dis-pdus" topic for asynchronous PDU processing
+- High-throughput message publishing with JSON serialization
+- Decoupling of ingestion from downstream processing services
+- Fault-tolerant message delivery with Kafka's durability guarantees
+
+### Network Architecture
+- UDP NodePort Service: Exposes UDP port 3000 on cluster port 32000 for direct DIS PDU ingestion
+- HTTP ClusterIP Service: Internal HTTP endpoints (port 8080) for health checks and metrics
+- Dual-protocol support: UDP for real-time data ingestion, HTTP for management operations
+
+## Use Cases
+
+The following table outlines the primary use cases for the Data Ingestion Service:
+
+| Use Case ID | Name | Actor(s) | Description |
+|-------------|------|----------|-------------|
+| UC-ING-01 | Receive DIS Data Stream | DIS PDU Emitter | The service actively listens on UDP port 3000 for continuous streams of binary DIS PDU packets from external simulation systems |
+| UC-ING-02 | Decode and Publish PDU | Internal | Upon receiving UDP packets, decodes binary data using DIS protocol library and publishes structured JSON to "dis-pdus" Kafka topic |
+| UC-ING-03 | Provide Real-time Metrics | Data Acquisition Service | Exposes internal HTTP endpoint (/internal/metrics/realtime) providing live metrics including last PDU timestamp and 60-second PDU counts |
+| UC-ING-04 | Provide Health Status | Kubernetes, Kong Gateway | Provides health check endpoint (/api/ingestion/health) for Kubernetes probes and Kong Gateway routing |
+| UC-ING-05 | Track Performance Metrics | Monitoring Systems | Real-time tracking of PDU reception rates, timestamps, and throughput statistics using thread-safe metrics collection |
+| UC-ING-06 | Handle Traffic Bursts | System | Asynchronous processing with configurable buffer sizes to handle high-volume PDU traffic without data loss |
+
+## API Endpoints
+
+### Public Endpoints (No Authentication Required)
+
+**Health Check**
+- GET /api/ingestion/health
+- Response: Service health status for Kubernetes probes and monitoring
+
+### Internal Endpoints (Service-to-Service Communication)
+
+**Real-time Metrics**
+- GET /internal/metrics/realtime
+- Response: {"lastPduReceivedTimestampMs": long, "pdusInLastSixtySeconds": long, "averagePduRatePerSecondLastSixtySeconds": double}
+- Used by: Data Acquisition Service for real-time metrics integration
+
+### Protected Endpoints (Firebase JWT Required via Kong Gateway)
+
+**Management Operations**
+- Various /api/ingestion/* endpoints for service management and configuration
+- Headers: Authorization: Bearer {firebase_jwt_token} (validated by Kong Gateway)
+- Access: Administrative operations and service configuration
+
+## Technical Implementation
+
+### High-Performance UDP Processing
+- UdpListenerService.java: Asynchronous UDP packet reception with @Async annotation
+- DatagramSocket and DatagramPacket for low-overhead network I/O
+- Configurable buffer size (2048 bytes) for optimal packet handling
+- Thread-safe metrics tracking using ConcurrentLinkedDeque and AtomicLong
+
+### PDU Decoding and Serialization
+- edu.nps.moves.disutil.PduFactory: Industry-standard DIS protocol library
+- Custom pduToJson() method using StringBuilder for performance optimization
+- DIS timestamp correction: Converts signed 32-bit to unsigned representation
+- Error handling for malformed or unsupported PDU types
+
+### Kafka Integration
+- KafkaProducerService.java: High-throughput message publishing
+- Topic: "dis-pdus" for downstream consumption
+- JSON serialization of decoded PDU data
+- Asynchronous publishing to prevent blocking UDP reception
+
+### Metrics and Observability
+- DisMetricsTracker.java: Thread-safe real-time metrics collection
+- Tracks PDU reception timestamps and calculates rates
+- Provides 60-second rolling window statistics
+- Integration with Data Acquisition Service for client-facing metrics
+
+## Testing and Quality Assurance
+
+### Comprehensive Test Coverage
+The Data Ingestion Service includes 9 comprehensive test files covering all major components:
+
+**Application Tests (1 file):**
+- DisApplicationTests.java: Full application context testing
+
+**Initializer Tests (1 file):**
+- UdpListenerInitializerTest.java: Application startup and UDP listener initialization
+
+**Controller Tests (2 files):**
+- HealthControllerTest.java: Health endpoint testing
+- InternalMetricsControllerTest.java: Internal metrics endpoint testing with @WebMvcTest
+
+**Service Tests (5 files):**
+- UdpListenerServiceTest.java: Core UDP processing logic testing
+- UdpListenerServiceDesignatorTest.java: Designator PDU handling testing
+- KafkaProducerServiceTest.java: Kafka message publishing testing
+- DisMetricsTrackerTest.java: Metrics collection and calculation testing
+- DisMetricsTrackerDesignatorTest.java: Designator-specific metrics testing
+
+### Quality Metrics
+- JaCoCo code coverage reporting integration
+- SonarCloud static code analysis
+- Automated test execution in CI/CD pipeline
+- Part of platform-wide 75 unit and integration tests across all services
+
+## Deployment Configuration
+
+### Container Specifications
+- Image: ghcr.io/nus-iss-projects/cap-backend-data-ingestion/cap-backend-data-ingestion:latest
+- Ports: HTTP 8080, UDP 3000
+- Resources: CPU 50m-200m, Memory 256Mi-512Mi
+- Health Probes: /api/ingestion/health (60s readiness, 90s liveness initial delay)
+
+### Environment Variables
+- SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+- KAFKA_TOPIC: dis-pdus
+- UDP_PORT: 3000
+- UDP_BUFFER_SIZE: 2048
+
+### Horizontal Pod Autoscaling
+- HPA Configuration: 1-2 replicas, 70% CPU utilization threshold
+- Automatic scaling based on UDP traffic load and processing demands
+
+## Performance Optimizations
+
+### High-Throughput Ingestion
+- UDP protocol selection for minimal network overhead
+- Asynchronous processing with separate thread pools
+- Non-blocking I/O operations to prevent packet loss
+- Configurable buffer sizes for optimal memory usage
+
+### Efficient Data Processing
+- Custom JSON serialization using StringBuilder for performance
+- DIS timestamp correction for accurate time representation
+- Error handling and validation for malformed PDUs
+- Immediate handoff to Kafka for downstream processing
+
+### Scalability Features
+- Horizontal scaling via HPA based on CPU utilization
+- Stateless design enabling multiple replica deployment
+- Load distribution across multiple UDP listener instances
+- Kafka partitioning support for parallel processing
+
+## Integration with Platform Services
+
+### Kong Gateway Integration
+- Centralized HTTP endpoint management with Firebase JWT authentication
+- Health endpoint exposure for monitoring and probes
+- Protected management endpoints with authentication
+- CORS and rate limiting policies for external access
+
+### Kafka Integration
+- High-throughput message publishing to "dis-pdus" topic
+- Asynchronous processing pipeline with fault tolerance
+- Message durability and ordering guarantees
+- Integration with downstream Data Processing Service
+
+### Monitoring and Observability
+- Real-time metrics endpoint for Data Acquisition Service integration
+- Standardized health endpoints for Kubernetes probes
+- Comprehensive logging for UDP reception and Kafka publishing
+- Performance metrics for throughput and latency monitoring
+
+### CI/CD Integration
+- GitHub Actions pipeline with automated building and testing
+- Container image creation and publishing to GHCR
+- Kubernetes deployment with rollout verification
+- Automated rollback capabilities for failed deployments
+
+## Production Deployment
+
+### Container Specifications
+- Base Image: openjdk:17-jdk
+- Application JAR: dis-0.0.1-SNAPSHOT.jar
+- Exposed Ports: 8080 (HTTP), 3000 (UDP)
+- Health Check Endpoint: /api/ingestion/health
+
+### Environment-Specific Configurations
+**Local Development:**
+- Image: cap-backend-data-ingestion:latest with imagePullPolicy: Never
+- NodePort service access via dis.local:32080 (HTTP) and direct UDP on port 32000
+
+**Staging Environment:**
+- LoadBalancer service with moderate rate limiting
+- Firebase JWT authentication for protected endpoints
+- DAST security scanning integration
+
+**Production Environment:**
+- Enhanced security and high-availability configurations
+- Optimized resource allocation for high-throughput processing
+- Comprehensive monitoring and alerting
+
+### Network Services
+**UDP NodePort Service (data-ingestion-service-udp):**
+- External UDP access on port 32000 (maps to container port 3000)
+- Direct DIS PDU ingestion bypassing Kong Gateway for performance
+- Cluster-wide endpoint for external simulation systems
+
+**HTTP ClusterIP Service (data-ingestion-service):**
+- Internal HTTP access on port 8080
+- Health checks and management operations
+- Integration with Kong Gateway for authenticated access
+
+## Figures
+
+**Figure 3.2.4.2.a: UML Diagram**
+
+**Figure 3.2.4.2.b: PDU Ingestion Flow**

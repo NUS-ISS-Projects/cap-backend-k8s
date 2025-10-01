@@ -1,0 +1,36 @@
+3.1.4 Platform Design
+The application architecture is deployed on a robust, scalable, and automated cloud platform designed for high availability and operational efficiency.
+
+**Containerization & Orchestration:** Each microservice is packaged as a Docker container, with its image stored in the GitHub Container Registry (GHCR). The entire platform is orchestrated by Google Kubernetes Engine (GKE). Stateless applications (data-ingestion, data-processing, data-acquisition, cap-user-service, cap-pdu-prediction-service, kong-gateway) are managed by Deployments, while stateful components (kafka, zookeeper, postgres) are managed by StatefulSets to ensure stable network identities and persistent storage.
+
+**Networking Design:**
+
+**Kong Gateway (API Gateway):** External HTTP/S traffic is managed by Kong Gateway, which serves as the unified entry point across all environments (local, staging, production). Kong Gateway provides advanced API management capabilities including:
+- Firebase JWT authentication with dynamic key fetching for protected endpoints
+- Path-based routing to backend services (/api/acquisition/*, /api/ingestion/*, /api/processing/*, /api/auth/*, /api/users/*, /api/prediction/*)
+- CORS policy enforcement and rate limiting (environment-specific: staging 5000/min, production 10000/min)
+- Prometheus metrics collection and comprehensive monitoring
+- Environment-specific configurations via Kustomize overlays
+
+**UDP Ingestion:** A NodePort service exposes the Data Ingestion Service's UDP port (3000) on a fixed port (32000) on every node in the GKE cluster, providing a stable, cluster-wide endpoint for external DIS PDU emitters.
+
+**Internal Communication:** Services communicate internally using standard Kubernetes ClusterIP and Headless services, which provide reliable service discovery within the cluster. Kong Gateway routes authenticated requests to appropriate backend services based on URL paths.
+
+**Scalability & Resilience:**
+
+**Autoscaling:** Horizontal Pod Autoscalers (HPAs) are configured for all core microservices with service-specific thresholds:
+- Data Ingestion Service: 1-2 replicas, 70% CPU utilization
+- Data Processing Service: 1-3 replicas, 70% CPU utilization  
+- Data Acquisition Service: 1-2 replicas, 85% CPU utilization
+- CAP User Service: 1-3 replicas, 70% CPU utilization
+- CAP PDU Prediction Service: 1 replica (single-instance for ML model consistency), 70% CPU and 85% memory monitoring
+
+**Health Checks:** All services are configured with Liveness and Readiness Probes. The Readiness probe ensures a pod only receives traffic when it's ready to serve it, while the Liveness probe allows Kubernetes to automatically restart a container if it becomes unresponsive, enabling self-healing. The CAP PDU Prediction Service has extended timeouts (180s initial delay, 15s timeout) to accommodate ML model loading.
+
+**Security & Authentication:** The platform implements enterprise-grade security through Firebase JWT authentication integrated with Kong Gateway. Protected endpoints require valid Firebase JWT tokens, while public endpoints (health checks, authentication routes) allow unrestricted access. Kong Gateway enforces security policies including CORS, rate limiting, and comprehensive audit logging.
+
+**Continuous Deployment (CI/CD):** The project employs a GitOps methodology using GitHub Actions. The deployment pipeline is defined in the CD.yaml file and is triggered automatically when a release (*-release) or staging (*-staging) tag is pushed to the repository. The workflow uses Kustomize to manage environment-specific configurations and applies the manifests to the GKE cluster, ensuring a repeatable and automated deployment process. The pipeline includes:
+- Comprehensive rollout status checking for all deployments and StatefulSets
+- Automatic rollback capabilities for failed deployments
+- DAST security scanning using OWASP ZAP for staging environments
+- Firebase service account secret management for secure authentication

@@ -1,0 +1,41 @@
+3.2.2 Technology and Services
+The platform is built using a curated set of modern, open-source technologies and cloud services chosen for their robustness, performance, and extensive community support. The architecture employs a multi-language approach to leverage the best tools for specific use cases.
+
+Category
+Technology / Service
+Purpose
+Containerization & Orchestration
+Docker, Google Kubernetes Engine (GKE)
+Packaging applications into portable containers and managing their lifecycle at scale. GKE provides managed Kubernetes control plane with HPA controllers for automatic scaling.
+Backend Framework
+Java (Spring Boot), Python (Flask)
+Java/Spring Boot serves as the core framework for data processing microservices (data-ingestion, data-processing, data-acquisition, cap-user-service), providing robust enterprise features, web APIs, data persistence, and Kafka integration. Python/Flask powers the cap-pdu-prediction-service to leverage the rich ML/AI ecosystem including scikit-learn, transformers, and RAG capabilities.
+API Gateway & Security
+Kong Gateway, Firebase Authentication
+Kong Gateway provides enterprise-grade API management with centralized routing, Firebase JWT authentication through custom jwt-firebase plugin, CORS policies, rate limiting, and comprehensive monitoring. Firebase Authentication delivers enterprise-grade user management with JWT token validation, eliminating the need for custom authentication infrastructure.
+Messaging Bus
+Apache Kafka & Apache Zookeeper
+A high-throughput, distributed streaming platform used as a message broker to decouple the ingestion and processing services. Kafka topics (dis-pdus) enable asynchronous processing with fault tolerance and message persistence.
+Database
+PostgreSQL
+A powerful, open-source object-relational database system used for persistent storage of processed DIS data (EntityStateRecord, FireEventRecord, DataPduRecord), user data, and session information. Deployed as StatefulSet with 20Gi PVC for data persistence.
+Container Registry
+GitHub Container Registry (GHCR)
+Integrated container image repository maintaining tight integration with source code and CI/CD pipeline. Images follow naming convention ghcr.io/nus-iss-projects/cap-backend-{service-name}/cap-backend-{service-name}:latest for clear traceability.
+CI/CD & Automation
+GitHub Actions, Kustomize
+Automating the build, test, and deployment pipeline with comprehensive rollout verification, automatic rollback capabilities, and DAST security scanning. Kustomize manages environment-specific configurations (local, staging, production) with base configurations and overlays.
+Testing & Quality Assurance
+JUnit 5, Mockito, Testcontainers, JaCoCo, SonarCloud
+Comprehensive testing suite with 75 unit and integration tests across all services. Includes controller tests (@WebMvcTest), service tests with mock repositories, Testcontainers for database integration testing, JaCoCo for code coverage reporting, and SonarCloud for static code analysis and quality metrics.
+Monitoring & Observability
+Prometheus, Kong Admin API, Health Endpoints
+Kong Gateway provides Prometheus metrics collection, while all services expose standardized /health endpoints for readiness and liveness probes. Kong Admin API enables configuration management and monitoring.
+Machine Learning & AI
+scikit-learn, transformers, RAG System
+The cap-pdu-prediction-service leverages Python's ML ecosystem for predictive analytics, vector embeddings, similarity search, and Retrieval-Augmented Generation (RAG) capabilities for intelligent data analysis and natural language querying.
+
+
+
+
+Figure 3.2.2.a: Technology and Services Used

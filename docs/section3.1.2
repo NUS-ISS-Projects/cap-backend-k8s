@@ -1,0 +1,28 @@
+3.1.2 Tiers and Layers
+The logical architecture can be segmented into five distinct tiers, each with a specific responsibility in the data pipeline. This layered approach isolates concerns and allows for independent scaling and development of each part of the system.
+
+API Gateway Tier: This is the outermost layer responsible for managing all external HTTP(S) traffic and providing centralized security, routing, and monitoring. It consists of Kong Gateway, which serves as the unified entry point for all client API requests. Kong Gateway enforces Firebase JWT authentication for protected endpoints while allowing public access to health checks and authentication routes. It provides path-based routing to backend microservices (/api/acquisition/*, /api/ingestion/*, /api/processing/*, /api/auth/*, /api/users/*, /api/prediction/*), implements CORS policies, rate limiting, and comprehensive monitoring through Prometheus metrics. This tier ensures consistent security and API management across all services.
+
+Ingestion Tier: This layer is responsible for receiving data from external sources through multiple channels. It consists of the Data Ingestion Service, which listens for raw DIS PDUs over UDP and provides HTTP endpoints for management operations. Its primary role is to accept the data, perform initial decoding, and pass it to the messaging tier. The service also exposes real-time metrics endpoints (/internal/metrics/realtime) for inter-service communication and monitoring. This tier is optimized for high-throughput network I/O and real-time data processing.
+
+
+Messaging Tier: This tier acts as a durable, asynchronous buffer between the ingestion and processing layers. It is composed of Apache Kafka and its coordinator, Zookeeper . By queuing incoming data as messages, this tier ensures that data is not lost during processing backlogs or downstream failures. It effectively decouples the data producers from the data consumers.
+
+
+Processing Tier: This layer is responsible for the core business logic of transforming raw data into structured, queryable formats and providing advanced analytics capabilities. Two main services reside here:
+
+Data Processing Service: Consumes messages from the Messaging Tier, performs parsing and validation of DIS PDUs, and persists the final records into the Data Tier. This service handles the traditional ETL (Extract, Transform, Load) operations for structured data storage.
+
+CAP PDU Prediction Service: Provides advanced Machine Learning and Retrieval-Augmented Generation (ML/RAG) capabilities for predictive analytics and intelligent data processing. This service analyzes processed PDU data to generate predictions, insights, and recommendations, accessible through dedicated API endpoints (/api/prediction/*) via the API Gateway Tier.
+
+
+Data & Presentation Tier: This is the final tier, responsible for both storing the data and presenting it to clients through secure, well-defined interfaces. It is composed of three main components:
+
+PostgreSQL Database: The persistent storage layer where structured data records are stored, including processed PDU records (EntityStateRecord, FireEventRecord, DataPduRecord), user data, and session information. PostgreSQL was selected for its ACID compliance, robust performance with both transactional and analytical workloads, and excellent support for complex queries.
+
+Data Acquisition Service: The presentation layer that provides a RESTful API for clients to access historical and real-time data. It queries the PostgreSQL database for historical records and communicates with the Data Ingestion Service for real-time ingestion metrics, ensuring client queries do not impact the real-time ingestion path. All endpoints are secured through the API Gateway Tier with Firebase JWT authentication.
+
+CAP User Service: Manages user authentication, authorization, and role-based access control (RBAC) with Firebase JWT integration. It handles user registration and login workflows through Firebase project "cap-backend-user", validates Firebase JWT tokens, maintains user profiles and sessions in PostgreSQL, and provides secure endpoints for user management (/api/auth/*, /api/users/*, /api/user-sessions/*). The service integrates seamlessly with Kong Gateway's Firebase authentication layer to ensure consistent security across the platform.
+
+
+Figure 3.1.2.a: Tiers and Layers Diagram

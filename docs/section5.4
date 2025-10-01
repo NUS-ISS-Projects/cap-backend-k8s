@@ -1,0 +1,353 @@
+5.4 DevOps Pipeline Design
+The overall DevOps pipeline design integrates the source control strategy with CI/CD automation to create a complete lifecycle from code commit to production deployment.
+The following PlantUML diagram illustrates this lifecycle:
+
+Figure 5.4.a: Pipeline design I
+Pipeline Flow Explained:
+Development: A developer works on a feature branch and pushes commits to the GitHub repository.
+Continuous Integration: Code changes are built and tested through separate CI processes that build Java applications, run unit and integration tests, and push container images to GitHub Container Registry (GHCR).
+Staging Deployment: To deploy to staging, a developer creates and pushes a tag with the pattern *-staging (e.g., v1.1.0-staging).
+Continuous Delivery to Staging:
+This staging tag triggers the "Deploy DIS Platform to GKE" job in CD.yaml.
+The job authenticates to Google Cloud Platform using service account credentials.
+It installs the GKE gcloud auth plugin and configures kubectl access to the target GKE cluster.
+The job creates necessary secrets (GHCR Docker config and Firebase service account) for the deployment.
+It uses Kustomize to build and apply the k8s/overlays/staging overlay configuration to the staging GKE cluster.
+The deployment includes comprehensive rollout status checking for all deployments (data-ingestion-service, data-processing-service, data-acquisition-service, cap-user-service, cap-pdu-prediction-service, kong-gateway) and StatefulSets (kafka, zookeeper, postgres).
+If any component fails, an automatic rollback mechanism is triggered.
+Upon successful staging deployment, the dast-baseline-scan job is triggered to perform OWASP ZAP security scanning on the staging application URL.
+Production Deployment:
+Once the staging deployment is verified and approved, a *-release tag (e.g., v1.1.0-release) is pushed.
+This triggers the same deploy-dis-platform-to-gke job with production-specific conditions.
+The job's conditional logic selects the k8s/overlays/prod Kustomize overlay to deploy to the production GKE cluster.
+The DAST scan job is skipped for release tags to ensure immediate production availability.
+Enhanced Safety Features:
+Comprehensive rollout status monitoring with 5-minute timeouts for each component.
+Automatic rollback capabilities for failed deployments.
+Environment-specific Kustomize overlays ensuring proper configuration isolation.
+Firebase service account secret management for secure authentication.
+This complete lifecycle provides a high degree of automation, safety, and security, enabling rapid and reliable delivery of the DIS data platform with comprehensive monitoring and rollback capabilities.
+
+Decomposed GKE Deployment Diagrams
+This document provides descriptions for the five decomposed PlantUML diagrams, each focusing on a specific aspect of the DIS (Distributed Interactive Simulation) data platform deployed on Google Kubernetes Engine (GKE).
+1. High-Level Architecture
+Purpose: This diagram offers a simplified, C4-style container overview of the entire system. It's designed to give a quick understanding of the main services, their roles, and the primary data flow interactions at a high level.
+Key Components Shown:
+Actors: Developer, Client/UI, DIS PDU Emitter.
+System Boundaries: Google Cloud Platform and the GKE Cluster within it.
+Core Containers (Services):
+Data Ingestion: Receives UDP DIS PDUs and publishes them to Kafka.
+Data Processing: Consumes data from Kafka, processes it, and stores it in the PostgreSQL database.
+Data Acquisition: Provides an API for clients to query historical data from PostgreSQL and real-time metrics from the Data Ingestion service.
+CAP User Service: Handles user authentication, registration, and session management with Firebase integration for secure access control.
+CAP PDU Prediction Service: Provides machine learning and RAG (Retrieval-Augmented Generation) capabilities for PDU analysis and prediction, offering intelligent insights into DIS simulation data.
+Data Stores:
+Apache Kafka: Acts as a message broker for queuing incoming PDU data.
+PostgreSQL: Stores the processed and structured PDU records.
+Key Interactions:
+Developers deploy services via a CI/CD pipeline.
+Clients/UIs interact with services via HTTPS (through Kong Gateway) to access data, user management, and ML prediction capabilities.
+DIS PDU Emitters send UDP packets directly to the Data Ingestion service.
+The internal data flow shows PDUs moving from Ingestion to Kafka, then to Processing, and finally into PostgreSQL, with the Acquisition service querying this data.
+Users authenticate through the CAP User Service using Firebase integration.
+The CAP PDU Prediction Service provides ML-powered analysis and predictions based on the processed DIS data.
+2. CI/CD Deployment Flow
+Purpose: This diagram isolates and illustrates the Continuous Integration/Continuous Deployment (CI/CD) pipeline. It shows the journey of code from a developer's machine to a running application in the GKE cluster.
+Key Components Shown:
+Actor: Developer.
+GitHub:
+GitHub Repository: Stores the source code.
+GitHub Actions: Represents the CI/CD workflow (build, test, package, deploy).
+Google Cloud Platform (GKE):
+GKE Control Plane: Receives deployment instructions from GitHub Actions.
+GKE Node Pool: Hosts the running application deployments and pods.
+Key Interactions:
+A Developer pushes code changes to the GitHub Repository.
+This push triggers the GitHub Actions CI/CD workflow.
+GitHub Actions uses kubectl apply -k (Kustomize) to send deployment instructions to the GKE Control Plane.
+The GKE Control Plane then manages the deployment of these workloads onto the GKE Node Pool.
+3. External Traffic & API Gateway Flow
+Purpose: This diagram details how external traffic, both HTTP(S) from clients and UDP from DIS PDU emitters, enters the GKE cluster and is routed to the appropriate services through Kong Gateway with Firebase JWT authentication.
+Key Components Shown:
+Actors: Client/UI, DIS PDU Emitter.
+Google Cloud Platform (GKE):
+Kong Gateway: Advanced API Gateway with Firebase JWT plugin that manages and routes external HTTP(S) traffic with authentication, rate limiting, CORS, and intelligent routing capabilities.
+GKE Worker Node(s): Physical or virtual machines where pods run; they have external IPs that can receive NodePort traffic.
+Kubernetes Services:
+Service (NodePort) 'data-ingestion-udp': Exposes the Data Ingestion service's UDP port (3000 via targetPort, exposed as 32000 on nodes) for external DIS PDU traffic.
+Service (ClusterIP) 'data-acquisition-service': Provides internal IP for Data Acquisition service (port 8080), targeted by Kong Gateway for /api/acquisition/* paths.
+Service (ClusterIP) 'data-ingestion-service': Internal IP for Data Ingestion HTTP endpoints (port 8080), targeted by Kong Gateway for /api/ingestion/*.
+Service (ClusterIP) 'data-processing-service': Internal IP for Data Processing HTTP endpoints (port 8080), targeted by Kong Gateway for /api/processing/*.
+Service (ClusterIP) 'cap-user-service': Internal IP for User Service (port 8080) handling authentication and user management, targeted by Kong Gateway for /api/auth/*, /api/users/*, and /api/user-sessions/* paths.
+Service (ClusterIP) 'cap-pdu-prediction-service': Internal IP for PDU Prediction Service (port 5001) providing ML/RAG capabilities, targeted by Kong Gateway for /api/prediction/* paths.
+Key Interactions:
+HTTP Traffic with Firebase Authentication:
+The Client/UI sends HTTPS API calls to Kong Gateway's external IP (LoadBalancer service).
+Kong Gateway processes requests through its Firebase JWT plugin, which:
+  - Validates Firebase JWT tokens for protected endpoints
+  - Fetches Firebase public keys for signature verification
+  - Extracts user claims and forwards authenticated requests
+  - Allows public access to health endpoints (/api/*/health) and authentication endpoints (/api/auth/login, /api/auth/register)
+Kong Gateway routes authenticated requests based on path rules to the respective ClusterIP services:
+  - /api/acquisition/* → data-acquisition-service:8080 (with JWT validation)
+  - /api/ingestion/* → data-ingestion-service:8080 (with JWT validation)
+  - /api/processing/* → data-processing-service:8080 (with JWT validation)
+  - /api/auth/*, /api/users/*, /api/user-sessions/* → cap-user-service:8080 (mixed public/protected)
+  - /api/prediction/* → cap-pdu-prediction-service:5001 (with JWT validation)
+Kong Gateway applies additional security policies including CORS, rate limiting, and Prometheus metrics collection.
+UDP Traffic (Direct):
+The DIS PDU Emitter sends UDP packets directly to the external IP of GKE Worker Nodes on the designated NodePort (32000).
+The data-ingestion-service-udp (NodePort service) routes the traffic to its target port (3000) on data-ingestion-service pods.
+This UDP traffic bypasses Kong Gateway as it's not HTTP-based and requires direct socket communication for real-time PDU processing.
+4. Core Data Pipeline Flow
+Purpose: This diagram provides a focused view of the main data processing pipeline within the GKE cluster, showing how DIS PDUs are ingested, queued, processed, stored, and enhanced with user management and advanced ML capabilities.
+Key Components Shown (as Pods):
+Pod: data-ingestion: Contains the Data Ingestion Service that receives DIS PDUs via UDP (port 3000) and publishes them to Kafka topics for asynchronous processing. Exposes HTTP endpoints (port 8080) for health checks and metrics.
+Pod: kafka: Represents the distributed Kafka Broker(s) that queue DIS PDUs and enable decoupled, scalable data processing with high throughput and fault tolerance.
+Pod: zookeeper: Contains the coordination service for Kafka cluster management, maintaining cluster metadata and configuration.
+Pod: data-processing: Contains the Data Processing Service that consumes PDUs from Kafka topics, processes them (parsing, validation, enrichment), and stores results in PostgreSQL. Runs on port 8080.
+Pod: postgres: Contains the PostgreSQL Database for persistent storage of processed DIS data, user information, session data, and application state with ACID compliance.
+Pod: cap-user-service: Contains the User Management Service that manages user authentication, authorization, user profiles, and session management with Firebase integration. Runs on port 8080.
+Pod: cap-pdu-prediction-service: Contains the advanced ML service (port 5001) providing ML-powered predictions, RAG (Retrieval-Augmented Generation) capabilities, vector embeddings, and similarity search for enhanced data insights.
+Pod: kong-gateway: Contains the API Gateway for routing, authentication, and security policy enforcement across all services.
+Key Interactions:
+DIS PDU Processing Pipeline:
+The data-ingestion pod receives DIS PDUs via UDP (port 3000) from external emitters and publishes them as JSON messages to kafka pod(s) topics (e.g., 'dis-pdu-topic', 'processed-pdu-topic').
+The data-processing pod consumes these JSON PDU messages from kafka, performs complex processing (parsing, validation, enrichment, transformation), and stores structured records into the postgres pod.
+Processed data includes entity tracking, position updates, and metadata enrichment for comprehensive DIS simulation support.
+API and ML Integration:
+The cap-user-service pod manages user authentication and sessions with Firebase JWT integration, storing user data in postgres.
+The cap-pdu-prediction-service pod accesses processed DIS data from postgres to provide ML-powered analysis, predictions, RAG-powered natural language queries, and vector search capabilities for finding similar simulation scenarios.
+Kong Gateway orchestrates secure access to all services, enforcing Firebase JWT authentication policies and routing requests appropriately based on URL paths.
+Cross-Service Communication:
+All pods communicate through well-defined REST APIs with standardized error handling and logging.
+Services expose health endpoints (/health) and metrics endpoints (/metrics) for comprehensive monitoring and observability.
+Inter-service authentication is handled through Kong Gateway's Firebase JWT validation, ensuring secure service-to-service communication.
+5. Kubernetes Workloads & Scaling
+Purpose: This diagram details the Kubernetes workloads (Deployments, StatefulSets) that run the application and its backend dependencies, along with their Horizontal Pod Autoscalers (HPAs) for managing scalability.
+Key Components Shown:
+GKE Cluster:
+GKE Control Plane: Manages all workloads and scaling operations.
+Workloads Package:
+Deployment data-ingestion-service: Handles UDP DIS PDU ingestion and publishes to Kafka
+Deployment data-processing-service: Processes PDU data from Kafka and stores in PostgreSQL
+Deployment data-acquisition-service: Provides API access to historical and real-time data
+Deployment cap-user-service: Manages user authentication and session management with Firebase integration
+Deployment cap-pdu-prediction-service: Provides ML/RAG capabilities for PDU analysis and prediction
+Deployment kong-gateway: API Gateway with Firebase JWT authentication and intelligent routing
+StatefulSet postgres: Primary data store for processed PDU records and user data
+StatefulSet kafka: Message broker for PDU data streaming and processing pipeline
+StatefulSet zookeeper: Coordination service for Kafka cluster management
+Autoscaling Package:
+HPA 'data-ingestion-hpa': Monitors and scales data ingestion service based on CPU/memory metrics
+HPA 'data-processing-hpa': Monitors and scales data processing service based on workload
+HPA 'data-acquisition-hpa': Monitors and scales data acquisition service for API requests
+HPA 'cap-user-service-hpa': Monitors and scales user service for authentication load
+HPA 'cap-pdu-prediction-hpa': Monitors ML prediction service with single-instance constraint
+Key Interactions:
+The GKE Control Plane manages all listed Deployments and StatefulSets, ensuring the desired number of replicas are running and maintaining high availability.
+The GKE Control Plane also manages the HPAs, coordinating scaling decisions across the platform.
+Each HPA monitors its target Deployment for metrics like CPU and memory utilization:
+  - data-ingestion-hpa monitors data-ingestion-service for UDP traffic load
+  - data-processing-hpa monitors data-processing-service for Kafka processing throughput
+  - data-acquisition-hpa monitors data-acquisition-service for API request volume
+  - cap-user-service-hpa monitors cap-user-service for authentication requests
+  - cap-pdu-prediction-hpa monitors cap-pdu-prediction-service for ML workload
+Based on these metrics and their configurations, HPAs instruct the GKE Control Plane to scale the corresponding Deployments up or down by adjusting the number of pod replicas.
+Special Scaling Considerations:
+The cap-pdu-prediction-hpa is configured with maxReplicas: 1 to maintain single-instance operation for ML model consistency and state management while still providing monitoring capabilities.
+Kong Gateway deployment provides load balancing across scaled service instances, ensuring optimal traffic distribution.
+StatefulSets (postgres, kafka, zookeeper) maintain persistent storage and ordered deployment for data consistency.
+
+Kong Gateway Configuration Details
+The DIS Platform has migrated from Kubernetes Ingress to Kong Gateway to provide enhanced API management capabilities across all environments. Kong Gateway serves as the unified entry point for all HTTP(S) traffic and implements sophisticated routing, authentication, and security policies with Firebase integration.
+
+Key Kong Gateway Features:
+Unified API Gateway: Consistent behavior across local development (Minikube with NodePort), staging, and production (GKE with LoadBalancer) environments.
+Firebase JWT Authentication: Integrated jwt-firebase plugin with custom Lua handler that validates Firebase tokens for protected endpoints while allowing public access to health and authentication routes.
+Advanced Security Plugins: CORS support, rate limiting, and Prometheus metrics collection for comprehensive monitoring.
+Path-Based Routing: Intelligent routing based on URL paths to appropriate backend services:
+  - /api/acquisition/* → data-acquisition-service:8080
+  - /api/ingestion/* → data-ingestion-service:8080  
+  - /api/processing/* → data-processing-service:8080
+  - /api/auth/*, /api/users/*, /api/user-sessions/* → cap-user-service:8080
+  - /api/prediction/* → cap-pdu-prediction-service:5001
+
+Firebase JWT Plugin Implementation:
+Custom Plugin Installation: Kong Gateway deployment includes an init container that installs the jwt-firebase plugin with a specialized Lua handler.
+Firebase Project Integration: Configured with Firebase project ID "cap-backend-user" for token validation.
+Dynamic Key Fetching: The plugin automatically fetches Firebase public keys for JWT signature verification.
+Token Processing: Validates JWT tokens, extracts user claims, and forwards authenticated requests to backend services.
+
+Authentication Policy Implementation:
+Public Endpoints (No Authentication Required):
+  - Health endpoints: /api/*/health (all services)
+  - Authentication endpoints: /api/auth/login, /api/auth/register
+  - Monitoring endpoints: /api/prediction/chat/status
+  - User health endpoint: /api/user/health
+
+Protected Endpoints (Firebase JWT Required):
+  - User management: /api/users/*, /api/user-sessions/*
+  - ML predictions: /api/prediction/chat, /api/prediction/*
+  - Data services: /api/ingestion/*, /api/processing/*, /api/acquisition/*
+  - All other service endpoints requiring authenticated access
+
+Enhanced Security Features:
+CORS Configuration: Comprehensive CORS policy supporting all HTTP methods with credential handling and custom headers.
+Rate Limiting: Environment-specific rate limits (staging: 5000/min, 50000/hour; production: 10000/min, 100000/hour).
+Prometheus Metrics: Per-consumer metrics collection for detailed monitoring and analytics.
+Load Balancing: Automatic service discovery and load balancing across multiple pod replicas.
+
+Environment-Specific Configuration:
+Local Development: Kong Gateway runs as a NodePort service accessible via dis.local:32080 with simplified authentication.
+Staging Environment: LoadBalancer service with moderate rate limits and DAST security scanning integration.
+Production Environment: LoadBalancer service with enhanced rate limits, Prometheus monitoring, and optimized performance settings.
+All environments maintain identical routing rules and authentication policies, ensuring consistent behavior across the deployment pipeline while allowing for environment-specific optimizations.
+
+Service Descriptions and Configurations
+This section provides detailed descriptions of all platform services, their configurations, and operational characteristics.
+
+Core Application Services:
+
+1. Data Ingestion Service (data-ingestion-service)
+Purpose: Receives DIS PDUs via UDP and publishes them to Kafka for asynchronous processing.
+Configuration:
+  - HTTP Port: 8080 (health checks, metrics)
+  - UDP Port: 3000 (DIS PDU reception)
+  - External Access: NodePort 32000 for UDP traffic
+  - Kafka Topic: "dis-pdus"
+  - UDP Buffer Size: 2048 bytes
+Resource Allocation:
+  - CPU Request: 50m, Memory Request: 128Mi
+  - HPA Configuration: 1-2 replicas, 70% CPU utilization threshold
+Key Features:
+  - Real-time UDP packet processing
+  - Kafka message publishing with JSON serialization
+  - Internal metrics endpoint (/internal/metrics/realtime)
+  - Health monitoring and observability
+
+2. Data Processing Service (data-processing-service)
+Purpose: Consumes PDUs from Kafka, processes them, and stores structured records in PostgreSQL.
+Configuration:
+  - HTTP Port: 8080 (health checks, metrics)
+  - Kafka Consumer: Processes "dis-pdus" topic
+  - Database: PostgreSQL connection for data persistence
+Resource Allocation:
+  - CPU Request: 100m, Memory Request: 256Mi
+  - HPA Configuration: 1-3 replicas, 70% CPU utilization threshold
+Key Features:
+  - Kafka message consumption and processing
+  - PDU parsing, validation, and enrichment
+  - PostgreSQL data storage (EntityStateRecord, FireEventRecord)
+  - Batch processing capabilities for high throughput
+
+3. Data Acquisition Service (data-acquisition-service)
+Purpose: Provides REST API endpoints for querying processed DIS data and real-time metrics.
+Configuration:
+  - HTTP Port: 8080
+  - Database: PostgreSQL read access for historical data
+  - Internal Service Communication: Fetches real-time metrics from Data Ingestion Service
+Resource Allocation:
+  - CPU Request: 100m, Memory Request: 256Mi
+  - HPA Configuration: 1-2 replicas, 85% CPU utilization threshold
+API Endpoints:
+  - /api/acquisition/* (protected with Firebase JWT)
+  - /api/acquisition/health (public)
+Key Features:
+  - Historical data querying and aggregation
+  - Real-time metrics integration
+  - RESTful API with comprehensive error handling
+  - Optimized database queries for performance
+
+4. CAP User Service (cap-user-service)
+Purpose: Manages user authentication, authorization, user profiles, and session management with Firebase integration.
+Configuration:
+  - HTTP Port: 8080
+  - Firebase Integration: Project ID "cap-backend-user"
+  - Database: PostgreSQL for user data and session storage
+Resource Allocation:
+  - CPU Request: 100m, Memory Request: 256Mi
+  - HPA Configuration: 1-3 replicas, 70% CPU utilization threshold
+API Endpoints:
+  - /api/auth/login, /api/auth/register (public)
+  - /api/users/*, /api/user-sessions/* (protected with Firebase JWT)
+  - /api/user/health (public)
+Key Features:
+  - Firebase JWT token validation and management
+  - User registration and authentication workflows
+  - Session management and user profile handling
+  - Secure password handling and user data protection
+
+5. CAP PDU Prediction Service (cap-pdu-prediction-service)
+Purpose: Advanced ML service providing predictive analytics, RAG capabilities, and intelligent insights for DIS data.
+Configuration:
+  - HTTP Port: 5001
+  - Resource Requirements: 1000m CPU, 2Gi memory, 3Gi ephemeral storage
+  - Extended Health Checks: 180s initialDelaySeconds, 15s timeoutSeconds
+  - HPA Configuration: 1 replica (single-instance for ML model consistency)
+API Endpoints:
+  - /api/prediction/chat (protected with Firebase JWT)
+  - /api/prediction/* (protected with Firebase JWT)
+  - /api/prediction/health (public)
+  - /api/prediction/chat/status (public, for monitoring)
+Key Features:
+  - ML-powered PDU analysis and prediction
+  - RAG (Retrieval-Augmented Generation) for natural language queries
+  - Vector embeddings and similarity search
+  - Integration with external ML models and APIs
+  - Tokenizer files and model loading capabilities
+Special Considerations:
+  - Single-instance deployment for model state consistency
+  - Extended startup time for ML model initialization
+  - Higher resource allocation for ML workloads
+
+6. Kong Gateway (kong-gateway)
+Purpose: Advanced API Gateway providing centralized routing, authentication, and security for all platform services.
+Configuration:
+  - HTTP Port: 8000 (API traffic)
+  - Admin Port: 8001 (Kong administration)
+  - Firebase JWT Plugin: Custom Lua handler for token validation
+  - Service Discovery: Automatic backend service detection
+Resource Allocation:
+  - CPU Request: 200m, Memory Request: 512Mi
+  - No HPA (single instance with load balancing capabilities)
+Key Features:
+  - Firebase JWT authentication with dynamic key fetching
+  - Path-based routing to all backend services
+  - CORS, rate limiting, and security policy enforcement
+  - Prometheus metrics collection and monitoring
+  - Environment-specific configurations (local, staging, production)
+
+Supporting Infrastructure Services:
+
+7. PostgreSQL Database (postgres)
+Purpose: Primary data store for processed PDU records, user data, and application state.
+Configuration:
+  - StatefulSet deployment for data persistence
+  - Database: "dis_db"
+  - Persistent storage with ACID compliance
+Key Features:
+  - Reliable data persistence for all application data
+  - Optimized for both transactional and analytical workloads
+  - Backup and recovery capabilities
+
+8. Apache Kafka (kafka)
+Purpose: Distributed message broker for PDU data streaming and processing pipeline.
+Configuration:
+  - StatefulSet deployment with Zookeeper coordination
+  - Topic: "dis-pdus" for PDU message streaming
+  - High throughput and fault tolerance
+Key Features:
+  - Asynchronous message processing
+  - Scalable data streaming architecture
+  - Message persistence and replay capabilities
+
+9. Zookeeper (zookeeper)
+Purpose: Coordination service for Kafka cluster management and configuration.
+Configuration:
+  - StatefulSet deployment for cluster coordination
+  - Maintains Kafka cluster metadata and configuration
+Key Features:
+  - Distributed coordination and consensus
+  - Configuration management for Kafka cluster
+  - High availability and fault tolerance

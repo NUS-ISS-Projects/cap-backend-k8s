@@ -1,0 +1,91 @@
+@startuml
+autonumber
+actor "Client/UI" as Client
+
+participant "Kong Gateway" as Kong
+participant "AuthController" as AuthCtrl
+participant "UserService" as UserSvc
+participant "Firebase Auth" as Firebase
+participant "UserRepository" as UserRepo
+participant "PostgreSQL" as Database
+
+== User Registration Flow ==
+Client -> Kong : POST /api/auth/register\n{email, password, username}
+activate Kong
+Kong -> AuthCtrl : registerUser(RegisterRequest)
+activate AuthCtrl
+
+AuthCtrl -> Firebase : createUser(email, password, displayName)
+activate Firebase
+Firebase --> AuthCtrl : Returns UserRecord
+deactivate Firebase
+
+AuthCtrl -> UserSvc : saveUser(User)
+activate UserSvc
+UserSvc -> UserRepo : save(user)
+activate UserRepo
+UserRepo -> Database : INSERT INTO users
+activate Database
+Database --> UserRepo : User saved
+deactivate Database
+UserRepo --> UserSvc : Returns saved User
+deactivate UserRepo
+UserSvc --> AuthCtrl : Returns User
+deactivate UserSvc
+
+AuthCtrl --> Kong : ResponseEntity("User registered successfully!")
+deactivate AuthCtrl
+Kong --> Client : HTTP 200 OK
+deactivate Kong
+
+== User Login Flow ==
+Client -> Kong : POST /api/auth/login\n{email, password}
+activate Kong
+Kong -> AuthCtrl : authenticateUser(LoginRequest)
+activate AuthCtrl
+
+AuthCtrl -> UserSvc : loginUser(LoginRequest)
+activate UserSvc
+UserSvc -> Firebase : signInWithPassword(email, password)
+activate Firebase
+Firebase --> UserSvc : Returns JWT Token
+deactivate Firebase
+UserSvc --> AuthCtrl : Returns JWT Token
+deactivate UserSvc
+
+AuthCtrl --> Kong : ResponseEntity(JwtResponse)
+deactivate AuthCtrl
+Kong --> Client : HTTP 200 OK\n{token: "jwt_token"}
+deactivate Kong
+
+== Protected Endpoint Access ==
+Client -> Kong : GET /api/users/profile\nAuthorization: Bearer {jwt_token}
+activate Kong
+Kong -> Kong : Validate JWT with Firebase
+activate Kong
+Kong --> Kong : Extract user claims
+deactivate Kong
+
+Kong -> AuthCtrl : Forward request with headers\n(X-User-ID, X-User-Email)
+activate AuthCtrl
+note right: Kong forwards user context\nvia headers after JWT validation
+
+AuthCtrl -> UserSvc : findUserById(userId)
+activate UserSvc
+UserSvc -> UserRepo : findById(userId)
+activate UserRepo
+UserRepo -> Database : SELECT FROM users
+activate Database
+Database --> UserRepo : User data
+deactivate Database
+UserRepo --> UserSvc : Optional<User>
+deactivate UserRepo
+UserSvc --> AuthCtrl : User profile
+deactivate UserSvc
+
+AuthCtrl --> Kong : ResponseEntity(User)
+deactivate AuthCtrl
+Kong --> Client : HTTP 200 OK\n{userId, username, email}
+deactivate Kong
+
+@enduml

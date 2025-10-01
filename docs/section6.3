@@ -1,0 +1,370 @@
+6.3 Threat Modelling
+
+The CAP platform threat model identifies potential security threats, attack vectors, and vulnerabilities that could compromise the confidentiality, integrity, and availability of the distributed simulation system. This analysis follows the STRIDE methodology (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege) and considers threats across all architectural components.
+
+Threat Modeling Methodology
+
+The threat analysis employs a systematic approach:
+
+1. Asset Identification: Critical assets including simulation data, user credentials, system configurations, and service availability
+2. Attack Surface Analysis: External interfaces, internal communications, and administrative access points
+3. Threat Actor Profiling: External attackers, malicious insiders, and compromised accounts
+4. Attack Vector Mapping: Network-based, application-level, and infrastructure attacks
+5. Risk Assessment: Likelihood and impact evaluation for each identified threat
+6. Mitigation Strategy: Current controls and recommended enhancements
+
+Critical Assets and Data Flows
+
+Primary Assets
+- Distributed simulation data (DIS PDUs, entity states, exercise scenarios)
+- User authentication credentials and session tokens
+- System configuration data and secrets
+- ML/AI models and prediction algorithms
+- Operational metrics and performance data
+- Administrative access credentials and service accounts
+
+Data Flow Analysis
+- External client traffic through Kong API Gateway
+- Inter-service communication within Kubernetes cluster
+- Database connections and data persistence
+- Message queue communications (Kafka)
+- CI/CD pipeline and deployment processes
+- Monitoring and logging data flows
+
+Threat Categories and Attack Vectors
+
+External Network Threats
+
+THREAT-EXT-001: API Gateway Compromise
+- Description: Attackers attempt to bypass or compromise Kong API Gateway
+- Attack Vectors:
+  * DDoS attacks against API Gateway endpoints
+  * Exploitation of Kong Gateway vulnerabilities
+  * JWT token manipulation or replay attacks
+  * Rate limiting bypass attempts
+- Impact: HIGH - Complete system compromise, data exfiltration
+- Likelihood: MEDIUM - API gateways are common attack targets
+- Current Mitigations:
+  * Kong Gateway with Firebase JWT validation
+  * Rate limiting (5000-10000 requests/minute)
+  * HTTPS/TLS encryption
+  * CORS policy enforcement
+- Recommended Enhancements:
+  * Web Application Firewall (WAF) integration
+  * Advanced DDoS protection
+  * API Gateway security hardening
+  * Intrusion detection system (IDS)
+
+THREAT-EXT-002: Authentication Bypass
+- Description: Unauthorized access through authentication system weaknesses
+- Attack Vectors:
+  * Firebase JWT token forgery or manipulation
+  * Session hijacking or fixation attacks
+  * Credential stuffing or brute force attacks
+  * OAuth/JWT implementation vulnerabilities
+- Impact: HIGH - Unauthorized data access, system manipulation
+- Likelihood: MEDIUM - Authentication systems are frequent targets
+- Current Mitigations:
+  * Firebase enterprise-grade authentication
+  * Automatic JWT key rotation
+  * Edge-level token validation
+  * Secure session management
+- Recommended Enhancements:
+  * Multi-factor authentication (MFA)
+  * Account lockout policies
+  * Behavioral authentication analysis
+  * Advanced threat detection
+
+THREAT-EXT-003: Data Exfiltration
+- Description: Unauthorized extraction of sensitive simulation data
+- Attack Vectors:
+  * SQL injection through API endpoints
+  * NoSQL injection in database queries
+  * API abuse for bulk data extraction
+  * Man-in-the-middle attacks on data transmission
+- Impact: CRITICAL - Loss of sensitive military simulation data
+- Likelihood: MEDIUM - Data is valuable target for adversaries
+- Current Mitigations:
+  * Parameterized database queries
+  * API rate limiting and monitoring
+  * HTTPS encryption for data in transit
+  * Authentication required for data endpoints
+- Recommended Enhancements:
+  * Data loss prevention (DLP) tools
+  * Database activity monitoring
+  * Advanced API security scanning
+  * Data classification and labeling
+
+Internal Infrastructure Threats
+
+THREAT-INT-001: Container Escape
+- Description: Attackers escape container boundaries to access host system
+- Attack Vectors:
+  * Kernel vulnerabilities exploitation
+  * Container runtime vulnerabilities
+  * Privileged container abuse
+  * Resource exhaustion attacks
+- Impact: HIGH - Host system compromise, lateral movement
+- Likelihood: LOW - Kubernetes provides strong isolation
+- Current Mitigations:
+  * Kubernetes security contexts
+  * Non-root container execution
+  * Resource limits and quotas
+  * Container image scanning
+- Recommended Enhancements:
+  * Runtime security monitoring
+  * Container behavior analysis
+  * Kernel hardening
+  * Advanced container isolation
+
+THREAT-INT-002: Service-to-Service Attacks
+- Description: Compromised service attacks other internal services
+- Attack Vectors:
+  * Lateral movement through service mesh
+  * Internal API abuse
+  * Service account privilege escalation
+  * Inter-service communication interception
+- Impact: HIGH - Internal system compromise, data manipulation
+- Likelihood: MEDIUM - Internal networks often less protected
+- Current Mitigations:
+  * Kubernetes network policies (planned)
+  * Service account isolation
+  * Internal endpoint authentication
+  * Network segmentation
+- Recommended Enhancements:
+  * Service mesh with mTLS
+  * Zero-trust internal networking
+  * Service behavior monitoring
+  * Micro-segmentation
+
+THREAT-INT-003: Secrets Compromise
+- Description: Unauthorized access to system secrets and credentials
+- Attack Vectors:
+  * Kubernetes secrets extraction
+  * CI/CD pipeline compromise
+  * Container image secret exposure
+  * Memory dump analysis
+- Impact: CRITICAL - Complete system compromise
+- Likelihood: MEDIUM - Secrets are high-value targets
+- Current Mitigations:
+  * Kubernetes secrets encryption
+  * GitHub Actions secret management
+  * Dynamic secret creation
+  * Secure secret rotation
+- Recommended Enhancements:
+  * External secret management (HashiCorp Vault)
+  * Secret scanning in CI/CD
+  * Runtime secret protection
+  * Secret access auditing
+
+Application-Level Threats
+
+THREAT-APP-001: Injection Attacks
+- Description: Code injection through application vulnerabilities
+- Attack Vectors:
+  * SQL injection in database queries
+  * Command injection in system calls
+  * LDAP injection in authentication
+  * XML/JSON injection in API requests
+- Impact: HIGH - Data manipulation, system compromise
+- Likelihood: MEDIUM - Common web application vulnerability
+- Current Mitigations:
+  * Parameterized database queries
+  * Input validation and sanitization
+  * Spring Security framework protection
+  * API request validation
+- Recommended Enhancements:
+  * Static application security testing (SAST)
+  * Dynamic application security testing (DAST) - partially implemented
+  * Interactive application security testing (IAST)
+  * Runtime application self-protection (RASP)
+
+THREAT-APP-002: Business Logic Flaws
+- Description: Exploitation of application logic vulnerabilities
+- Attack Vectors:
+  * Workflow bypass attacks
+  * Race condition exploitation
+  * State manipulation attacks
+  * Authorization logic flaws
+- Impact: MEDIUM - Data integrity issues, unauthorized operations
+- Likelihood: MEDIUM - Complex applications often have logic flaws
+- Current Mitigations:
+  * Comprehensive unit and integration testing
+  * Code review processes
+  * Spring Security authorization
+  * API endpoint validation
+- Recommended Enhancements:
+  * Formal verification of critical logic
+  * Automated business logic testing
+  * Runtime behavior monitoring
+  * Anomaly detection
+
+THREAT-APP-003: Dependency Vulnerabilities
+- Description: Exploitation of third-party library vulnerabilities
+- Attack Vectors:
+  * Known CVE exploitation in dependencies
+  * Supply chain attacks on libraries
+  * Transitive dependency vulnerabilities
+  * Outdated library exploitation
+- Impact: HIGH - Application compromise, data breach
+- Likelihood: HIGH - Dependencies frequently have vulnerabilities
+- Current Mitigations:
+  * Regular dependency updates
+  * Maven/npm security scanning
+  * Container base image scanning
+  * Dependency version management
+- Recommended Enhancements:
+  * Automated vulnerability scanning
+  * Software composition analysis (SCA)
+  * Dependency risk assessment
+  * Supply chain security validation
+
+Infrastructure and Platform Threats
+
+THREAT-INF-001: Kubernetes Cluster Compromise
+- Description: Unauthorized access to Kubernetes control plane
+- Attack Vectors:
+  * API server vulnerabilities
+  * etcd database compromise
+  * Node agent compromise
+  * RBAC privilege escalation
+- Impact: CRITICAL - Complete platform compromise
+- Likelihood: LOW - Managed Kubernetes provides strong security
+- Current Mitigations:
+  * Google Kubernetes Engine (GKE) managed security
+  * RBAC configuration
+  * Network policies (planned)
+  * Cluster monitoring
+- Recommended Enhancements:
+  * Kubernetes security benchmarks (CIS)
+  * Pod security policies/standards
+  * Admission controllers
+  * Cluster security scanning
+
+THREAT-INF-002: Cloud Provider Compromise
+- Description: Compromise of underlying cloud infrastructure
+- Attack Vectors:
+  * Cloud account credential compromise
+  * IAM privilege escalation
+  * Cloud service vulnerabilities
+  * Insider threats at cloud provider
+- Impact: CRITICAL - Complete infrastructure compromise
+- Likelihood: LOW - Major cloud providers have strong security
+- Current Mitigations:
+  * Google Cloud Platform security controls
+  * IAM least privilege principles
+  * Multi-factor authentication
+  * Cloud security monitoring
+- Recommended Enhancements:
+  * Cloud security posture management (CSPM)
+  * Cloud workload protection platform (CWPP)
+  * Advanced cloud monitoring
+  * Incident response automation
+
+THREAT-INF-003: Supply Chain Attacks
+- Description: Compromise through software supply chain
+- Attack Vectors:
+  * Malicious container base images
+  * Compromised CI/CD pipeline
+  * Malicious dependencies injection
+  * Build system compromise
+- Impact: HIGH - Widespread system compromise
+- Likelihood: MEDIUM - Supply chain attacks increasing
+- Current Mitigations:
+  * Trusted container registries (GHCR)
+  * Secure CI/CD pipeline
+  * Image scanning and verification
+  * Dependency management
+- Recommended Enhancements:
+  * Software bill of materials (SBOM)
+  * Container image signing
+  * Build attestation
+  * Supply chain risk assessment
+
+Insider Threats
+
+THREAT-INS-001: Malicious Insider
+- Description: Authorized user with malicious intent
+- Attack Vectors:
+  * Privilege abuse for data exfiltration
+  * System sabotage or disruption
+  * Credential sharing or misuse
+  * Unauthorized system modifications
+- Impact: HIGH - Data breach, system disruption
+- Likelihood: LOW - Insider threats are less common but high impact
+- Current Mitigations:
+  * Role-based access control
+  * Activity logging and monitoring
+  * Separation of duties
+  * Regular access reviews
+- Recommended Enhancements:
+  * User behavior analytics (UBA)
+  * Privileged access management (PAM)
+  * Data loss prevention (DLP)
+  * Insider threat detection
+
+THREAT-INS-002: Compromised Insider Account
+- Description: External attacker using compromised insider credentials
+- Attack Vectors:
+  * Phishing attacks on employees
+  * Credential stuffing with leaked passwords
+  * Social engineering attacks
+  * Malware on employee devices
+- Impact: HIGH - Authorized access for unauthorized activities
+- Likelihood: MEDIUM - Credential compromise is common
+- Current Mitigations:
+  * Firebase authentication security
+  * Session management controls
+  * Access logging and monitoring
+  * Regular security training
+- Recommended Enhancements:
+  * Multi-factor authentication (MFA)
+  * Conditional access policies
+  * Behavioral authentication
+  * Advanced threat protection
+
+Risk Assessment Matrix
+
+The following risk matrix evaluates threats based on likelihood and impact:
+
+CRITICAL RISKS (Immediate attention required):
+- THREAT-EXT-003: Data Exfiltration
+- THREAT-INT-003: Secrets Compromise
+- THREAT-INF-001: Kubernetes Cluster Compromise
+- THREAT-INF-002: Cloud Provider Compromise
+
+HIGH RISKS (Priority mitigation):
+- THREAT-EXT-001: API Gateway Compromise
+- THREAT-EXT-002: Authentication Bypass
+- THREAT-INT-001: Container Escape
+- THREAT-INT-002: Service-to-Service Attacks
+- THREAT-APP-001: Injection Attacks
+- THREAT-APP-003: Dependency Vulnerabilities
+- THREAT-INF-003: Supply Chain Attacks
+- THREAT-INS-001: Malicious Insider
+- THREAT-INS-002: Compromised Insider Account
+
+MEDIUM RISKS (Ongoing monitoring):
+- THREAT-APP-002: Business Logic Flaws
+
+Threat Mitigation Roadmap
+
+Phase 1 (Immediate - 0-3 months):
+- Implement container vulnerability scanning
+- Deploy Web Application Firewall (WAF)
+- Enhance API security monitoring
+- Implement multi-factor authentication
+
+Phase 2 (Short-term - 3-6 months):
+- Deploy service mesh with mTLS
+- Implement advanced threat detection
+- Enhance secrets management
+- Deploy runtime security monitoring
+
+Phase 3 (Medium-term - 6-12 months):
+- Implement zero-trust networking
+- Deploy advanced analytics and AI-based threat detection
+- Enhance supply chain security
+- Implement comprehensive insider threat protection
+
+This threat model provides a comprehensive foundation for understanding and mitigating security risks across the CAP platform, enabling informed security investment decisions and risk management strategies.

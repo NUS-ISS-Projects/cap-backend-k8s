@@ -18,6 +18,7 @@ package "com.cap.dis.controller" {
 package "com.cap.dis.service" {
     class UdpListenerService {
         - port: int
+        - bufferSize: int
         - kafkaProducerService: KafkaProducerService
         - metricsTracker: DisMetricsTracker
         + startListening(): void
@@ -34,6 +35,7 @@ package "com.cap.dis.service" {
         - lastPduReceivedTimestampMsAtomic: AtomicLong
         + pduReceived(): void
         + getMetrics(): RealTimeMetrics
+        + calculateAverageRate(): double
     }
 }
 
@@ -42,6 +44,9 @@ package "com.cap.dis" {
         - udpListenerService: UdpListenerService
         + run(String...): void
     }
+     class DisApplication {
+        + main(String[]): void
+    }
 }
 
 package "com.cap.dis.model" {
@@ -49,13 +54,60 @@ package "com.cap.dis.model" {
         - lastPduReceivedTimestampMs: long
         - pdusInLastSixtySeconds: long
         - averagePduRatePerSecondLastSixtySeconds: double
+        + getLastPduReceivedTimestampMs(): long
+        + getPdusInLastSixtySeconds(): long
+        + getAveragePduRatePerSecondLastSixtySeconds(): double
     }
 }
 
+package "External Services" {
+    class "Kong Gateway" as Kong {
+        + validateJWT(String): boolean
+        + routeRequest(String): void
+        + applyRateLimit(): void
+        + applyCORS(): void
+    }
+    class "Kafka Broker" as KafkaBroker {
+        + receive(String, String): void
+        + store(String): void
+    }
+    class "Data Acquisition Service" as DataAcq {
+        + fetchRealTimeMetrics(): RealTimeMetrics
+    }
+}
+
+package "Network Services" {
+    class "UDP NodePort Service" as UDPService {
+        - nodePort: 32000
+        - targetPort: 3000
+        + routeUDPTraffic(): void
+    }
+    class "HTTP ClusterIP Service" as HTTPService {
+        - port: 8080
+        - targetPort: 8080
+        + routeHTTPTraffic(): void
+    }
+}
+
+' Core relationships
 UdpListenerInitializer ..> UdpListenerService : invokes
+DisApplication ..> UdpListenerInitializer : starts
 InternalMetricsController ..> DisMetricsTracker : uses
 UdpListenerService ..> KafkaProducerService : uses
-UdpListenerService ..> DisMetricsTracker : uses
+UdpListenerService ..> DisMetricsTracker : updates
 DisMetricsTracker ..> RealTimeMetrics : creates
+KafkaProducerService ..> KafkaBroker : publishes to
+
+' External integrations
+Kong ..> HealthController : routes /api/ingestion/health
+Kong ..> InternalMetricsController : routes /api/ingestion/* (protected)
+DataAcq ..> InternalMetricsController : calls /internal/metrics/realtime
+UDPService ..> UdpListenerService : routes UDP traffic
+HTTPService ..> HealthController : routes HTTP health checks
+HTTPService ..> InternalMetricsController : routes HTTP metrics
+
+' Network flow
+UDPService : External UDP Port 32000
+HTTPService : Internal HTTP Port 8080
 
 @enduml

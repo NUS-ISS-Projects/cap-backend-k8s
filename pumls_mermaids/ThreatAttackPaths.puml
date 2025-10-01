@@ -1,0 +1,78 @@
+@startuml ThreatAttackPaths
+!theme aws-orange
+title CAP Platform - Critical Attack Paths
+
+' Define colors
+!define EXTERNAL_COLOR #FF6B6B
+!define INTERNAL_COLOR #4ECDC4
+!define CRITICAL_THREAT #FF4444
+!define HIGH_THREAT #FF8800
+
+' Actors and Zones
+actor "External Attacker" as Attacker EXTERNAL_COLOR
+actor "Malicious Insider" as Insider #FF8E53
+
+package "CAP Platform Security Zones" {
+  
+  package "Edge Zone" EXTERNAL_COLOR {
+    component "Kong API Gateway" as Kong
+    component "Load Balancer" as LB
+  }
+  
+  package "Application Zone" INTERNAL_COLOR {
+    component "Microservices" as Services
+    component "CI/CD Pipeline" as CICD
+  }
+  
+  package "Data Zone" #96CEB4 {
+    database "Critical Data\n(Simulation, Secrets)" as Data
+    database "PostgreSQL" as DB
+    storage "Kubernetes Secrets" as Secrets
+  }
+}
+
+' Normal Data Flow
+LB --> Kong : "HTTPS Traffic"
+Kong --> Services : "Authenticated Requests"
+Services --> DB : "Data Operations"
+CICD --> Services : "Deployments"
+
+' Critical Attack Paths
+package "Critical Attack Scenarios" {
+  
+  ' Attack Path 1: Data Exfiltration (CRITICAL)
+  Attacker -.-> Kong : "**1. SQL Injection**\nAPI Abuse" CRITICAL_THREAT
+  Kong -.-> DB : "**2. Malicious Queries**\nBulk Data Extraction" CRITICAL_THREAT
+  DB -.-> Attacker : "**3. Data Theft**\nSimulation Results" CRITICAL_THREAT
+  
+  ' Attack Path 2: Secrets Compromise (CRITICAL)
+  Attacker -.-> CICD : "**1. CI/CD Compromise**\nPipeline Access" CRITICAL_THREAT
+  CICD -.-> Secrets : "**2. Secret Extraction**\nCredential Theft" CRITICAL_THREAT
+  Secrets -.-> DB : "**3. Database Access**\nDirect Connection" CRITICAL_THREAT
+  
+  ' Attack Path 3: API Gateway Compromise (HIGH)
+  Attacker -.-> Kong : "**1. DDoS/JWT Attack**\nGateway Bypass" HIGH_THREAT
+  Kong -.-> Services : "**2. Unauthorized Access**\nService Compromise" HIGH_THREAT
+  Services -.-> Data : "**3. Internal Access**\nData Manipulation" HIGH_THREAT
+  
+  ' Attack Path 4: Insider Threat (HIGH)
+  Insider -.-> Secrets : "**1. Privilege Abuse**\nDirect Access" HIGH_THREAT
+  Insider -.-> Data : "**2. Data Exfiltration**\nAuthorized Access" HIGH_THREAT
+}
+
+' Security Controls
+package "Key Security Controls" {
+  rectangle "**Current Protections:**\n\n• Firebase JWT Authentication\n• Kong Gateway Rate Limiting\n• HTTPS/TLS Encryption\n• Container Image Scanning\n• OWASP ZAP DAST" as Controls #E8F5E8
+  
+  rectangle "**Critical Gaps:**\n\n• No WAF Protection\n• No Runtime Monitoring\n• Basic Secret Management\n• Limited Insider Controls" as Gaps #FFE4E1
+}
+
+' Trust Boundaries
+note top of Kong : **Trust Boundary 1**\nExternal ↔ Internal
+note top of Services : **Trust Boundary 2**\nApplication ↔ Data
+note top of Data : **Trust Boundary 3**\nData Layer Protection
+
+' Attack Impact Legend
+note bottom : **Attack Paths:**\n• **Solid Lines:** Normal Data Flow\n• **Dashed Red:** Critical Risk Attacks\n• **Dashed Orange:** High Risk Attacks\n\n**Numbers:** Attack sequence steps
+
+@enduml

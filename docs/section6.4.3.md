@@ -1,0 +1,377 @@
+# 6.4.3 Detailed Implementation of Security Controls
+
+This section provides technical specifications and implementation details for the security controls actually deployed within the CAP platform. Each control includes configuration details based on the current codebase implementation.
+
+## Authentication and Authorization Controls
+
+### CONTROL-AUTH-001: Firebase JWT Authentication
+
+**Technical Implementation:**
+- Custom Kong Gateway plugin: jwt-firebase (Lua implementation)
+- JWT token validation at API Gateway level
+- Firebase public key fetching and caching
+- RSA-SHA256 signature verification
+
+**Actual Plugin Configuration (from kong-gateway-firebase.yaml):**
+```lua
+-- JWT Firebase Plugin Implementation
+local jwt_firebase = {}
+
+function jwt_firebase:access(conf)
+  -- Fetch Firebase public keys
+  local firebase_keys_url = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com"
+  
+  -- Extract JWT from Authorization header
+  local auth_header = kong.request.get_header("authorization")
+  if not auth_header then
+    return kong.response.exit(401, {message = "Missing authorization header"})
+  end
+  
+  -- Validate JWT signature using Firebase public keys
+  -- Verify claims: iss, aud, exp
+  -- Forward user context to downstream services
+end
+```
+
+**Route Configuration:**
+```yaml
+# Protected routes with jwt-firebase plugin
+routes:
+- name: cap-user-service-protected
+  plugins:
+  - name: jwt-firebase
+- name: data-acquisition-service-protected  
+  plugins:
+  - name: jwt-firebase
+- name: cap-pdu-prediction-service-protected
+  plugins:
+  - name: jwt-firebase
+
+# Unprotected routes (health checks)
+- name: cap-user-service-health
+  paths: ["/health"]
+  # No authentication plugin
+```
+
+**Current Limitations:**
+- No role-based access control implementation
+- No custom claims processing
+- Basic JWT validation only
+- No user context forwarding to services
+
+### CONTROL-AUTH-002: Basic Authentication Model
+
+**Technical Implementation:**
+- Binary authentication (authenticated vs. unauthenticated)
+- Service-level access control through Kong Gateway routing
+- No fine-grained authorization system
+
+**Current Implementation:**
+```yaml
+# Kong Gateway Route Protection
+services:
+- name: cap-user-service
+  routes:
+  - name: protected-endpoints
+    paths: ["/api/users", "/api/profile"]
+    plugins:
+    - name: jwt-firebase
+  - name: public-endpoints  
+    paths: ["/health", "/auth"]
+    # No authentication required
+```
+
+**Current Limitations:**
+- No role-based access control (RBAC)
+- No permission-based authorization
+- No Spring Security integration documented
+- No method-level security annotations
+
+## Network Security Controls
+
+### CONTROL-NET-001: Basic TLS/SSL Configuration
+
+**Technical Implementation:**
+- Kong Gateway TLS termination
+- Basic HTTPS enforcement
+- Standard certificate management
+
+**Current Implementation:**
+```yaml
+# Kong Gateway TLS Configuration (Basic)
+services:
+- name: kong-gateway
+  protocol: https
+  port: 443
+  
+# Certificate management through GKE Ingress
+ingress:
+  tls:
+  - hosts:
+    - api.cap-platform.example.com
+    secretName: tls-secret
+```
+
+**Current Limitations:**
+- No TLS version enforcement documented
+- No cipher suite configuration
+- No HSTS headers implementation
+- Basic certificate management only
+
+### CONTROL-NET-002: Kong Gateway Rate Limiting
+
+**Technical Implementation:**
+- Kong Gateway rate limiting plugin (referenced in configurations)
+- Basic rate limiting capabilities
+
+**Current Implementation Status:**
+```yaml
+# Kong Gateway Plugin Configuration (Referenced)
+plugins:
+- name: rate-limiting
+  # Configuration not fully documented in codebase
+```
+
+**Current Limitations:**
+- Rate limiting configuration not fully implemented
+- No environment-specific limits documented
+- No monitoring of rate limit violations
+- Basic implementation only
+
+## Platform and Infrastructure Security Controls
+
+### CONTROL-INF-001: Basic Container Security
+
+**Technical Implementation:**
+- Kubernetes deployment configurations
+- Basic resource limits
+- Standard container practices
+
+**Current Implementation:**
+```yaml
+# Basic Kubernetes Deployment Security
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: app
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+```
+
+**Current Limitations:**
+- No security contexts documented
+- No non-root user configuration
+- No capability dropping
+- Basic resource limits only
+
+### CONTROL-INF-002: Basic Kubernetes Configuration
+
+**Technical Implementation:**
+- Standard Kubernetes deployments
+- Basic service configurations
+- Namespace separation
+
+**Current Implementation:**
+```yaml
+# Basic Kubernetes Service Configuration
+apiVersion: v1
+kind: Service
+metadata:
+  name: cap-user-service
+  namespace: cap-platform
+spec:
+  selector:
+    app: cap-user-service
+  ports:
+  - port: 8080
+    targetPort: 8080
+```
+
+**Current Limitations:**
+- No RBAC policies documented
+- No security contexts
+- No service account configurations
+- Basic deployment only
+
+## Data and Service Security Controls
+
+### CONTROL-DATA-001: Basic Database Security
+
+**Technical Implementation:**
+- PostgreSQL deployment in Kubernetes
+- Basic connection security
+- Environment variable configuration
+
+**Current Implementation:**
+```yaml
+# PostgreSQL Basic Configuration
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: postgres
+  template:
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:13
+        env:
+        - name: POSTGRES_DB
+          value: capdb
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+```
+
+**Current Limitations:**
+- No encryption at rest configuration
+- No SSL/TLS enforcement
+- Basic secret management only
+- No connection pooling security
+
+### CONTROL-DATA-002: Basic Secrets Management
+
+**Technical Implementation:**
+- Kubernetes native secrets
+- Basic secret distribution
+- Environment variable injection
+
+**Current Implementation:**
+```yaml
+# Basic Kubernetes Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: firebase-service-account
+  namespace: cap-platform
+type: Opaque
+data:
+  service-account.json: <base64-encoded-value>
+```
+
+**Current Limitations:**
+- No secret rotation
+- No encryption at rest for secrets
+- No secret scanning
+- Basic secret management only
+
+## CI/CD and Deployment Security Controls
+
+### CONTROL-CICD-001: GitHub Actions Security
+
+**Technical Implementation:**
+- GitHub Actions workflow for deployment
+- GCP service account authentication
+- Basic credential management
+
+**Current Implementation:**
+```yaml
+# GitHub Actions Deployment Security
+name: CD
+on:
+  push:
+    tags:
+      - '*-release'
+      - '*-staging'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+    
+    - name: Create Firebase Service Account Secret
+      run: |
+        echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' | base64 -d > service-account.json
+        kubectl create secret generic firebase-service-account \
+          --from-file=service-account.json=service-account.json \
+          --namespace=cap-platform \
+          --dry-run=client -o yaml | kubectl apply -f -
+```
+
+**Current Limitations:**
+- Basic credential management
+- No secret scanning in CI/CD
+- No security testing integration
+- Limited security controls
+
+### CONTROL-CICD-002: OWASP ZAP DAST Integration
+
+**Technical Implementation:**
+- OWASP ZAP baseline scan in CI/CD
+- Basic vulnerability scanning
+- Report generation
+
+**Current Implementation:**
+```yaml
+# OWASP ZAP DAST Job
+dast-baseline-scan:
+  runs-on: ubuntu-latest
+  needs: deploy
+  if: contains(github.ref, 'staging')
+  steps:
+  - name: ZAP Baseline Scan
+    uses: zaproxy/action-baseline@v0.7.0
+    with:
+      target: 'https://staging.cap-platform.example.com'
+      rules_file_name: '.zap/rules.tsv'
+      cmd_options: '-a'
+      
+  - name: Upload ZAP Reports
+    uses: actions/upload-artifact@v3
+    with:
+      name: zap-reports
+      path: |
+        report_html.html
+        report_json.json
+        report_xml.xml
+```
+
+**Current Limitations:**
+- Basic DAST scanning only
+- No authenticated scanning
+- No integration with security workflow
+- Limited vulnerability management
+
+## Summary of Implemented vs. Not Implemented
+
+### Implemented Security Controls:
+- Firebase JWT authentication at Kong Gateway
+- Basic Kong Gateway routing and protection
+- Basic Kubernetes deployments and services
+- PostgreSQL and Kafka basic deployments
+- GitHub Actions CI/CD with basic security
+- OWASP ZAP DAST baseline scanning
+- Basic secrets management with Kubernetes
+
+### Not Yet Implemented:
+- Role-based access control (RBAC)
+- Advanced authentication and authorization
+- Container security contexts and hardening
+- Network policies and segmentation
+- Encryption at rest and in transit
+- Advanced secrets management and rotation
+- Comprehensive monitoring and alerting
+- Advanced vulnerability management
+- Application-level security controls
+- Data loss prevention
+- Security event monitoring and SIEM integration

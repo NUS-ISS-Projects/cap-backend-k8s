@@ -1,0 +1,21 @@
+5.2 Continuous Integration (CI)
+Continuous Integration (CI) is the practice of frequently merging all developers' working copies to a shared mainline. The project implements comprehensive CI workflows across all microservices with dedicated GitHub Actions workflow files. The CI process includes the following steps:
+Trigger: The CI pipeline is triggered on every git push to any branch across all service repositories (data-ingestion, data-processing, data-acquisition, cap-user-service).
+
+Figure 5.2.a: CD triggers
+Build: For each Java-based microservice (data-ingestion, data-processing, data-acquisition, cap-user-service), the pipeline uses Maven to compile the source code with `mvn -B package --file pom.xml`.
+Test: The pipeline executes the comprehensive suite of 58 unit and integration tests across all services, including MetricsServiceTest.java, DataAcquisitionApplicationTests.java, UserServiceTest.java, and AuthControllerTest.java. This includes using Testcontainers for database integration tests, which is a key best practice.
+Static Code Analysis: Each service integrates SonarCloud for automated code quality analysis, bug detection, and vulnerability scanning. JaCoCo reports are generated and uploaded as artifacts for code coverage tracking.
+
+
+Figure 5.2.b: Sonarcloud analysis
+Containerize: Upon successful build and test phases, Docker images are built for each service using the standardized Dockerfiles present in each repository.
+
+Figure 5.2.c: Docker images
+Push to Registry: The built images are tagged and pushed to GitHub Container Registry (ghcr.io) with the naming convention `ghcr.io/nus-iss-projects/cap-backend-{service-name}/cap-backend-{service-name}`. The CD pipeline in the cap-backend-k8s repository handles deployment triggered by tags with `*-staging` or `*-release` suffixes.
+
+CI Workflow Implementation:
+- **Individual Service CI**: Each microservice repository (data-acquisition, data-ingestion, data-processing, cap-user-service) contains its own CI.yaml/CI.yml workflow file
+- **Centralized CD**: The cap-backend-k8s repository contains the CD.yaml workflow for deployment orchestration
+- **Quality Gates**: All services implement Maven builds, JUnit testing, JaCoCo code coverage, and SonarCloud analysis
+- **Artifact Management**: JaCoCo reports and build artifacts are uploaded for tracking and analysis

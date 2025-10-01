@@ -1,0 +1,267 @@
+3.2.4.5 CAP PDU Prediction Service
+
+The CAP PDU Prediction Service is an advanced Machine Learning and Retrieval-Augmented Generation (RAG) microservice that provides intelligent analytics, predictive capabilities, and natural language querying for DIS simulation data. It is a Python/Flask application that leverages state-of-the-art ML models including transformers, vector embeddings, and similarity search to deliver AI-powered insights and conversational interfaces for data exploration and analysis. The service integrates with processed PDU data from PostgreSQL and other platform services to provide comprehensive ML-driven predictions and intelligent data interpretation.
+
+## Service Overview
+
+The CAP PDU Prediction Service is a Python/Flask microservice that manages:
+- Advanced ML-powered predictive analytics for DIS PDU data using scikit-learn
+- Retrieval-Augmented Generation (RAG) system for natural language queries
+- Vector embeddings and similarity search using sentence-transformers and FAISS
+- Conversational AI interfaces for intelligent data exploration
+- Integration with Kong Gateway for HTTP endpoint security
+- Real-time data integration with Data Acquisition Service
+- Health monitoring and observability endpoints
+
+## Architecture Integration
+
+### Kong Gateway Integration
+- Public endpoints: /api/prediction/health, /api/prediction/chat/status (health monitoring)
+- Protected endpoints: /api/prediction/chat, /api/prediction/* (ML services with Firebase JWT authentication)
+- Automatic JWT validation at Kong Gateway level for protected endpoints
+- CORS and rate limiting policies applied at gateway level
+- User context forwarding via headers for personalized ML responses
+
+### Data Integration
+- PostgreSQL read access via Data Acquisition Service for historical PDU analysis
+- Real-time metrics integration with Data Ingestion Service
+- HTTP-based service-to-service communication with JWT authentication
+- Data caching mechanisms for performance optimization (2-second cache duration)
+- Vector store integration for similarity search and retrieval
+
+### ML/AI Architecture
+- Transformer-based models: Google FLAN-T5-small for natural language generation
+- Sentence embeddings: all-MiniLM-L6-v2 for semantic similarity and retrieval
+- Vector database: FAISS for efficient similarity search and clustering
+- Linear regression models: scikit-learn for time-series prediction
+- GPU/CPU optimization: Automatic device selection for optimal performance
+
+## Use Cases
+
+The following table outlines the primary use cases for the CAP PDU Prediction Service:
+
+| Use Case ID | Name | Actor(s) | Description |
+|-------------|------|----------|-------------|
+| UC-PRED-01 | PDU Data Prediction | Client / UI | Requests ML-powered predictions for future PDU activity based on historical time-series data using linear regression models |
+| UC-PRED-02 | Natural Language Queries | Client / UI | Submits natural language questions about DIS platform data and receives intelligent responses via RAG system |
+| UC-PRED-03 | Real-time Data Analysis | Client / UI | Requests AI-powered analysis of current system status, PDU rates, and platform performance metrics |
+| UC-PRED-04 | Vector Similarity Search | Internal | Performs semantic similarity search across historical data and system knowledge for contextual responses |
+| UC-PRED-05 | Conversational AI Interface | Client / UI | Engages in multi-turn conversations about DIS data with context-aware responses and follow-up capabilities |
+| UC-PRED-06 | System Status Intelligence | Client / UI | Provides intelligent interpretation of system health, performance trends, and operational insights |
+| UC-PRED-07 | Data Exploration Assistance | Client / UI | Assists users in exploring and understanding complex DIS simulation data through natural language interactions |
+| UC-PRED-08 | Provide Health Status | Kubernetes, Kong Gateway | Provides health check endpoints for Kubernetes probes and Kong Gateway routing |
+
+## API Endpoints
+
+### Public Endpoints (No Authentication Required)
+
+**Health Check**
+- GET /api/prediction/health
+- GET /health
+- Response: Service health status for Kubernetes probes and monitoring
+
+**Chat System Status**
+- GET /api/prediction/chat/status
+- Response: RAG system status, data availability, and model readiness information
+
+### Protected Endpoints (Firebase JWT Required via Kong Gateway)
+
+**ML Prediction Endpoint**
+- POST /api/prediction
+- POST /predict
+- Request Body: {"timeUnit": "hour|day|week", "buckets": [{"hour": "timestamp", "entityStatePduCount": number, ...}]}
+- Response: {"predicted_labels": ["Pred. Point 1", ...], "predicted_values": [numbers]}
+- Headers: Authorization: Bearer {firebase_jwt_token} (validated by Kong Gateway)
+
+**RAG Chat Interface**
+- POST /api/prediction/chat
+- POST /chat
+- Request Body: {"query": "Natural language question about DIS data"}
+- Response: {"query": "string", "answer": "string", "context": "string", "data_sources": ["list"], "timestamp": "string"}
+- Headers: Authorization: Bearer {firebase_jwt_token} (validated by Kong Gateway)
+
+## Technical Implementation
+
+### Flask Application Architecture
+- predict_v5.py: Main Flask application with ML prediction and RAG endpoints
+- Modular design with separate prediction and RAG functionality
+- Error handling and validation for all API endpoints
+- JWT token extraction and forwarding for service authentication
+- Health check endpoints for Kubernetes integration
+
+### Machine Learning Components
+**Predictive Analytics:**
+- Linear Regression: scikit-learn models for time-series PDU prediction
+- Feature Engineering: Automatic aggregation of 10+ PDU types for analysis
+- Time-series Processing: Support for hourly, daily, and weekly prediction intervals
+- Model Training: Dynamic model fitting based on historical data patterns
+
+**RAG System Architecture:**
+- DISDataRAGSystem: Comprehensive RAG implementation in rag_system.py
+- Retrieval Component: Sentence-transformers for semantic embedding generation
+- Generation Component: FLAN-T5-small for natural language response generation
+- Vector Store: FAISS for efficient similarity search and retrieval
+- Context Management: Intelligent context extraction and relevance scoring
+
+### AI/ML Technology Stack
+**Core ML Libraries:**
+- torch==2.1.0: PyTorch for deep learning model execution
+- transformers==4.35.0: Hugging Face transformers for NLP models
+- sentence-transformers==2.2.2: Sentence embeddings for semantic similarity
+- scikit-learn==1.3.0: Traditional ML algorithms for prediction
+- faiss-cpu==1.7.4: Vector database for similarity search
+
+**Supporting Libraries:**
+- numpy==1.24.3: Numerical computing and array operations
+- Flask==2.3.3: Web framework for API endpoints
+- requests==2.31.0: HTTP client for service-to-service communication
+- gunicorn==21.2.0: WSGI server for production deployment
+
+### Data Processing and Caching
+- Real-time Data Fetching: HTTP integration with Data Acquisition Service
+- Data Caching: 2-second cache duration for real-time metrics optimization
+- JWT Token Management: Dynamic token setting and authentication forwarding
+- Error Handling: Comprehensive exception handling for service unavailability
+- Vector Store Management: Efficient embedding storage and retrieval
+
+### RAG System Features
+**Natural Language Understanding:**
+- Query Processing: Intelligent parsing of user questions and intent recognition
+- Context Retrieval: Semantic search across platform data and system knowledge
+- Response Generation: Contextual answer generation using transformer models
+- Multi-turn Conversations: Context-aware dialogue management
+
+**Data Integration:**
+- Service Discovery: Dynamic endpoint configuration for platform services
+- Authentication Flow: JWT token propagation for secure service access
+- Real-time Updates: Live data integration for current system status
+- Knowledge Base: Vector embeddings of platform documentation and data patterns
+
+## Testing and Quality Assurance
+
+### Test Coverage
+The CAP PDU Prediction Service includes comprehensive testing:
+
+**Unit Tests (1 file):**
+- test_predict_v5.py: Core prediction logic and API endpoint testing
+
+### Quality Metrics
+- Automated test execution in CI/CD pipeline
+- Model performance validation for prediction accuracy
+- RAG system response quality assessment
+- Integration testing with platform services
+
+## Deployment Configuration
+
+### Container Specifications
+- Image: ghcr.io/nus-iss-projects/cap-pdu-prediction/cap-pdu-prediction:latest
+- Ports: HTTP 5001
+- Resources: CPU 300m-1000m, Memory 1.5Gi-2Gi, Ephemeral Storage 2Gi-3Gi
+- Health Probes: /health (180s readiness, 180s liveness initial delay for ML model loading)
+
+### Environment Variables
+- FLASK_ENV: production
+- PYTHONUNBUFFERED: 1
+- DIS_BASE_URL: http://kong-gateway-service.default.svc.cluster.local:8000
+
+### Horizontal Pod Autoscaling
+- HPA Configuration: 1 replica (fixed), 70% CPU + 85% Memory monitoring
+- Single-instance deployment for ML model state consistency
+- No automatic scaling to maintain model coherence and performance
+
+## Performance Optimizations
+
+### ML Model Optimization
+- GPU/CPU Detection: Automatic device selection for optimal performance
+- Model Caching: Pre-loaded models during application startup
+- Efficient Inference: Optimized tensor operations and batch processing
+- Memory Management: Careful resource allocation for large language models
+
+### RAG System Performance
+- Vector Store Optimization: FAISS indexing for fast similarity search
+- Embedding Caching: Efficient storage and retrieval of vector embeddings
+- Context Window Management: Optimized context length for response quality
+- Response Caching: Intelligent caching of frequently requested information
+
+### Service Integration Performance
+- Connection Pooling: Efficient HTTP client configuration for service calls
+- Timeout Management: Appropriate timeouts for external service dependencies
+- Error Recovery: Graceful degradation when dependent services are unavailable
+- Data Freshness: Balanced caching strategy for real-time vs. performance needs
+
+## Integration with Platform Services
+
+### Kong Gateway Integration
+- Centralized HTTP endpoint management with Firebase JWT authentication
+- Health endpoint exposure for monitoring and probes
+- Protected ML endpoints with authentication and user context forwarding
+- CORS and rate limiting policies for external client access
+
+### Data Acquisition Service Integration
+- Real-time metrics fetching via authenticated HTTP endpoints
+- Historical data access for ML model training and analysis
+- Service-to-service communication with JWT token forwarding
+- Error handling and fallback mechanisms for service unavailability
+
+### Platform Data Integration
+- PostgreSQL access via Data Acquisition Service for historical analysis
+- Real-time metrics integration for current system status
+- Cross-service authentication using JWT token propagation
+- Comprehensive data aggregation for ML feature engineering
+
+### Monitoring and Observability
+- Standardized health endpoints for Kubernetes probes
+- ML model performance monitoring and logging
+- RAG system response quality tracking
+- Integration with platform monitoring systems
+
+### CI/CD Integration
+- GitHub Actions pipeline with automated building and testing
+- Container image creation and publishing to GHCR
+- Kubernetes deployment with extended health check timeouts
+- Automated rollback capabilities for failed deployments
+
+## Production Deployment
+
+### Container Specifications
+- Base Image: python:3.9-slim with ML dependencies
+- Application Files: predict_v5.py, rag_system.py, requirements.txt
+- Exposed Port: 5001 (HTTP)
+- Health Check Endpoint: /health
+
+### Environment-Specific Configurations
+**Local Development:**
+- Image: cap-pdu-prediction:latest with imagePullPolicy: Never
+- Local service integration and reduced resource requirements
+
+**Staging Environment:**
+- LoadBalancer service with moderate rate limiting
+- Firebase JWT authentication for protected endpoints
+- DAST security scanning integration
+
+**Production Environment:**
+- Enhanced security and high-availability configurations
+- Optimized resource allocation for ML workloads
+- Comprehensive monitoring and alerting
+
+### Scalability and Performance
+- HPA Configuration: 1 replica (fixed) with 70% CPU + 85% Memory monitoring
+- Single-instance deployment for ML model state consistency
+- Resource allocation: CPU 300m-1000m, Memory 1.5Gi-2Gi, Ephemeral Storage 2Gi-3Gi
+- Extended health probes: 180s initial delay for ML model loading
+
+### ML Model Management
+- Model Loading: Automatic model initialization during application startup
+- Model Persistence: Efficient model caching and memory management
+- Model Updates: Deployment-based model versioning and updates
+- Performance Monitoring: ML model inference time and accuracy tracking
+
+UML Class Diagram
+The class diagram below illustrates the key components of the CAP PDU Prediction Service, showing the Flask application structure, RAG system integration, and ML model components.
+
+Figure 3.2.4.5.a: UML Class Diagram
+
+Sequence Diagram: RAG Query Processing Flow
+This sequence diagram details the process of a client submitting a natural language query, the RAG system processing it through retrieval and generation components, and returning an intelligent response.
+
+Figure 3.2.4.5.b: RAG Query Processing Flow

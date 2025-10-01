@@ -1,0 +1,80 @@
+3.2.6 Architectural Limitations and Constraints
+The current design has evolved significantly with enhanced security, persistent storage, and comprehensive API management. However, several architectural constraints and areas for improvement remain that should be considered for future platform evolution and production optimization.
+
+## Resolved Limitations (Previously Addressed)
+
+### ✅ Persistent Storage Implementation
+**Previous Limitation**: Ephemeral storage for stateful services
+**Current Status**: RESOLVED - PostgreSQL now uses 20Gi PersistentVolumeClaim with standard-rwo storage class, ensuring data durability across pod restarts and rescheduling events. StatefulSet deployment provides stable network identities and ordered operations for database consistency.
+
+### ✅ Security and Access Control Implementation
+**Previous Limitation**: Open API endpoints without authentication
+**Current Status**: RESOLVED - Comprehensive security framework implemented:
+- Kong Gateway with Firebase JWT authentication via custom jwt-firebase plugin
+- Protected endpoints require valid Firebase JWT tokens (validated at gateway level)
+- Public endpoints limited to health checks and authentication routes
+- User context forwarding via headers (X-User-ID, X-User-Email, X-Consumer-ID)
+- Environment-specific rate limiting (staging: 5000/min, production: 10000/min)
+- CORS policies and comprehensive security monitoring
+
+## Current Architectural Constraints
+
+### Single Point of Failure in Messaging Infrastructure
+The Kafka and Zookeeper StatefulSets remain configured with replicas: 1, creating potential availability risks for the messaging tier.
+**Impact**: Single Kafka or Zookeeper pod failure would halt the entire data pipeline, preventing new data ingestion and processing until service recovery.
+**Current Mitigation**: Kubernetes self-healing with automatic pod restart and StatefulSet guarantees
+**Recommended Enhancement**: Scale to 3+ replicas for Kafka and Zookeeper in production environments with appropriate replication factors for fault tolerance.
+
+### ML Service Single-Instance Constraint
+The CAP PDU Prediction Service is intentionally configured with maxReplicas: 1 to maintain ML model state consistency.
+**Impact**: No horizontal scaling capability for ML workloads, potential bottleneck during high prediction demand, and single point of failure for AI/ML capabilities.
+**Current Mitigation**: Higher resource allocation (CPU 300m-1000m, Memory 1.5Gi-2Gi, Ephemeral Storage 2Gi-3Gi) and extended health check timeouts (180s initial delay)
+**Architectural Trade-off**: Model consistency vs. scalability - current design prioritizes reliable AI performance over horizontal scaling.
+
+### Peak Load Metrics Calculation Limitations
+The MetricsService uses fixed 60-second time buckets based on absolute epoch time for peak load calculations.
+**Impact**: High-volume traffic bursts spanning bucket boundaries may be underrepresented in peak load metrics, potentially affecting capacity planning and performance analysis.
+**Current Mitigation**: Comprehensive real-time metrics and multiple aggregation timeframes (hourly, daily, weekly, monthly)
+**Recommended Enhancement**: Implement sliding window algorithms for more accurate peak load detection across arbitrary time intervals.
+
+### Limited Cross-Zone High Availability
+Current deployment configurations do not explicitly enforce cross-zone pod distribution for critical services.
+**Impact**: All replicas of a service could be scheduled on the same availability zone, reducing resilience to zone-level failures.
+**Current Mitigation**: GKE's default scheduling and node pool distribution across zones
+**Recommended Enhancement**: Implement pod anti-affinity rules and zone-aware scheduling for critical services in production environments.
+
+### Container Image Vulnerability Management
+The platform lacks automated container image vulnerability scanning in the CI/CD pipeline.
+**Impact**: Potential security vulnerabilities in base images or dependencies may not be detected before deployment.
+**Current Mitigation**: Use of official, well-maintained base images (openjdk:17-jdk, postgres:14, kong:latest) and regular manual updates
+**Recommended Enhancement**: Integrate automated vulnerability scanning tools (e.g., Trivy, Snyk) into GitHub Actions CI/CD pipeline.
+
+### Network Segmentation and Isolation
+The platform does not implement Kubernetes NetworkPolicies for micro-segmentation between services.
+**Impact**: All pods can communicate with all other pods within the cluster, potentially increasing attack surface in case of pod compromise.
+**Current Mitigation**: Kong Gateway authentication and authorization at the API level, service-level authentication validation
+**Recommended Enhancement**: Implement NetworkPolicies to restrict inter-service communication to only necessary paths and protocols.
+
+### Observability and Monitoring Gaps
+While comprehensive health endpoints and logging are implemented, advanced observability features are limited.
+**Impact**: Limited visibility into distributed request tracing, service dependencies, and performance bottlenecks across the microservices architecture.
+**Current Mitigation**: Standardized health endpoints, comprehensive logging, Kong Gateway metrics, and HPA monitoring
+**Recommended Enhancement**: Implement distributed tracing (OpenTelemetry, Jaeger), centralized logging (ELK Stack), and advanced monitoring dashboards (Grafana).
+
+### Database Performance Optimization Opportunities
+Current database queries rely primarily on application-level aggregations rather than database-optimized operations.
+**Impact**: Potential performance limitations for complex analytics queries and large dataset aggregations, especially as data volume grows.
+**Current Mitigation**: Optimized JPA queries, connection pooling, and indexed timestamp columns
+**Recommended Enhancement**: Implement database-level aggregation functions, materialized views for common queries, and consider read replicas for analytics workloads.
+
+### ML Model Management and Versioning
+The CAP PDU Prediction Service lacks sophisticated model versioning and A/B testing capabilities.
+**Impact**: Difficulty in deploying model updates, comparing model performance, and rolling back problematic model versions.
+**Current Mitigation**: Single-instance deployment ensures model consistency, comprehensive testing in CI/CD pipeline
+**Recommended Enhancement**: Implement model versioning, canary deployments for ML models, and A/B testing frameworks for model performance comparison.
+
+### Backup and Disaster Recovery Strategy
+While persistent storage is implemented, comprehensive backup and disaster recovery procedures are not fully automated.
+**Impact**: Potential data loss in catastrophic failure scenarios, longer recovery times, and manual intervention requirements for disaster recovery.
+**Current Mitigation**: Persistent storage with cloud provider durability guarantees, StatefulSet ordered deployment
+**Recommended Enhancement**: Implement automated backup schedules, cross-region replication, and documented disaster recovery procedures with RTO/RPO targets.
