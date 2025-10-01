@@ -1,0 +1,156 @@
+3.2.3 Persistence Design
+The system's persistence strategy is designed to ensure both the durability of data at rest and the resilience of data in transit.
+Primary Datastore: The authoritative data store is a PostgreSQL database running as a Kubernetes Deployment within the GKE cluster. It houses the structured data that has been processed from the Kafka pipeline. For production environments, this deployment would be configured to use a Persistent Volume Claim (PVC) backed by Google Persistent Disks to ensure data survives pod restarts and failures.
+
+
+Durable Messaging: Apache Kafka serves as a secondary, short-term persistence layer for data in transit. When the data-ingestion service publishes a message, Kafka writes it to a durable, replicated log on disk. The message persists in the topic until it has been successfully consumed by the data-processing service and the retention period expires. This ensures that even if the processing service is down, no incoming data is lost.
+
+Figure 3.2.3.a: ERD Diagram
+
+
+Database Schema
+The PostgreSQL database contains the following primary tables, which are defined by their corresponding JPA entity classes in the application code.
+Table: user
+Stores structured data from DIS Entity State PDUs.
+Field Name
+Data Type
+Description
+id
+BIGINT
+Auto-incrementing primary key.
+department 
+
+
+VARCHAR(100)
+
+
+User's department
+
+
+employeeId 
+
+
+VARCHAR(50)
+
+
+Unique employee identifier
+
+
+createdAt 
+TIMESTAMP 
+
+
+Timestamp when the user was created
+
+
+
+Table: audit_logs
+Stores structured data from DIS Entity State PDUs.
+Field Name
+Data Type
+Description
+id
+BIGINT
+Auto-incrementing primary key.
+user_id
+BIGINT
+
+
+Foreign key referencing users(id).
+timestamp
+
+
+TIMESTAMP
+
+
+Time of the audited action.
+action
+
+
+VARCHAR(100)
+
+
+Type of action (e.g., "navigate to chart paget").
+
+
+Table: entity_state_record
+Stores structured data from DIS Entity State PDUs.
+Field Name
+Data Type
+Description
+id
+BIGINT
+Auto-incrementing primary key.
+site
+INTEGER
+The site identifier for the entity.
+application
+INTEGER
+The application identifier for the entity.
+entity
+INTEGER
+The specific entity identifier.
+locationX
+DOUBLE PRECISION
+The X-coordinate of the entity's location.
+locationY
+DOUBLE PRECISION
+The Y-coordinate of the entity's location.
+locationZ
+DOUBLE PRECISION
+The Z-coordinate of the entity's location.
+timestamp
+BIGINT
+The DIS absolute timestamp of the PDU event.
+
+Table: fire_event_record
+Stores structured data from DIS Fire PDUs.
+Field Name
+Data Type
+Description
+id
+BIGINT
+Auto-incrementing primary key.
+firingSite
+INTEGER
+The site identifier of the firing entity.
+firingApplication
+INTEGER
+The application identifier of the firing entity.
+firingEntity
+INTEGER
+The entity identifier of the firing entity.
+targetSite
+INTEGER
+The site identifier of the target entity.
+targetApplication
+INTEGER
+The application identifier of the target entity.
+targetEntity
+INTEGER
+The entity identifier of the target entity.
+munitionSite
+INTEGER
+The site identifier of the munition.
+munitionApplication
+INTEGER
+The application identifier of the munition.
+munitionEntity
+INTEGER
+The entity identifier of the munition.
+timestamp
+BIGINT
+The DIS absolute timestamp of the PDU event.
+
+Database Interactions
+The following services interact directly with the PostgreSQL database.
+Service
+Access Type
+Operations
+Data Processing Service
+Write
+INSERT new records into the entity_state_record and fire_event_record tables after consuming and parsing messages from Kafka.
+Data Acquisition Service
+Read
+SELECT records from the database to fulfill client API requests for historical data, aggregations, and metrics.
+

@@ -2,43 +2,173 @@
 autonumber
 actor "Client / UI" as Client
 
+participant "Kong Gateway" as Kong
+participant "HTTP ClusterIP Service" as HTTPService
 participant "HistoricalDataController" as Controller
 participant "MetricsService" as Service
+participant "RealTimeMetricsService" as RTService
 participant "EntityStateRepository" as ESRepo
 participant "FireEventRepository" as FERepo
+participant "CollisionRepository" as CollisionRepo
+participant "DetonationRepository" as DetonationRepo
+participant "Data Ingestion Service" as IngestionSvc
 database "PostgreSQL DB" as DB
 
-Client -> Controller : GET /api/acquisition/metrics?period=last60minutes
+== Health Check Flow (Public) ==
+Client -> Kong : GET /api/acquisition/health
+activate Kong
+Kong -> HTTPService : Route to ClusterIP port 8080
+activate HTTPService
+HTTPService -> Controller : healthCheck()
+activate Controller
+Controller --> HTTPService : ResponseEntity("Service is up...")
+deactivate Controller
+HTTPService --> Kong : HTTP 200 OK
+deactivate HTTPService
+Kong --> Client : Health status response
+deactivate Kong
+
+== Aggregated Metrics Flow (Protected) ==
+Client -> Kong : GET /api/acquisition/metrics?period=last60minutes\nAuthorization: Bearer {jwt_token}
+activate Kong
+Kong -> Kong : Validate Firebase JWT token
+activate Kong
+note right: Custom jwt-firebase plugin\nvalidates token with Firebase
+Kong --> Kong : Extract user claims
+deactivate Kong
+
+Kong -> HTTPService : Forward authenticated request\nwith user headers (X-User-ID, X-User-Email)
+activate HTTPService
+HTTPService -> Controller : getAggregatedMetricsOverview("last60minutes")
 activate Controller
 
 Controller -> Service : getAggregatedMetrics("last60minutes")
 activate Service
 
-Service -> ESRepo : findByTimestampBetween(...)
+Service -> ESRepo : findByTimestampBetween(startTime, endTime)
 activate ESRepo
-ESRepo -> DB : SELECT * FROM entity_state_record...
+ESRepo -> DB : SELECT * FROM entity_state_record WHERE timestamp BETWEEN...
 activate DB
 DB --> ESRepo : Returns EntityStateRecord list
 deactivate DB
-ESRepo --> Service :
+ESRepo --> Service : List<EntityStateRecord>
 deactivate ESRepo
 
-Service -> FERepo : findByTimestampBetween(...)
+Service -> FERepo : findByTimestampBetween(startTime, endTime)
 activate FERepo
-FERepo -> DB : SELECT * FROM fire_event_record...
+FERepo -> DB : SELECT * FROM fire_event_record WHERE timestamp BETWEEN...
 activate DB
 DB --> FERepo : Returns FireEventRecord list
 deactivate DB
-FERepo --> Service :
+FERepo --> Service : List<FireEventRecord>
 deactivate FERepo
 
-Service -> Service : calculatePeakLoad(...)
+Service -> CollisionRepo : findByTimestampBetween(startTime, endTime)
+activate CollisionRepo
+CollisionRepo -> DB : SELECT * FROM collision_record WHERE timestamp BETWEEN...
+activate DB
+DB --> CollisionRepo : Returns CollisionRecord list
+deactivate DB
+CollisionRepo --> Service : List<CollisionRecord>
+deactivate CollisionRepo
+
+Service -> DetonationRepo : findByTimestampBetween(startTime, endTime)
+activate DetonationRepo
+DetonationRepo -> DB : SELECT * FROM detonation_record WHERE timestamp BETWEEN...
+activate DB
+DB --> DetonationRepo : Returns DetonationRecord list
+deactivate DB
+DetonationRepo --> Service : List<DetonationRecord>
+deactivate DetonationRepo
+
+note over Service : Process all 10+ PDU types\n(EntityState, Fire, Collision, Detonation,\nData, ActionRequest, StartResume,\nSetData, Designator, ElectromagneticEmissions)
+
+Service -> Service : calculatePeakLoad(allRecords)
 Service -> Service : new AggregatedMetricsOverview(...)
 
 Service --> Controller : Returns AggregatedMetricsOverview DTO
 deactivate Service
 
-Controller --> Client : 200 OK with JSON Body
+Controller --> HTTPService : 200 OK with comprehensive metrics JSON
 deactivate Controller
+HTTPService --> Kong : Response with aggregated data
+deactivate HTTPService
+Kong --> Client : Authenticated response with metrics
+deactivate Kong
+
+== Real-time Metrics Flow (Protected) ==
+Client -> Kong : GET /api/acquisition/realtime\nAuthorization: Bearer {jwt_token}
+activate Kong
+Kong -> Kong : Validate Firebase JWT token
+Kong -> HTTPService : Forward authenticated request
+activate HTTPService
+HTTPService -> Controller : getRealTimeDisMetrics()
+activate Controller
+
+Controller -> RTService : getLatestMetrics()
+activate RTService
+RTService -> IngestionSvc : GET /internal/metrics/realtime
+activate IngestionSvc
+IngestionSvc --> RTService : RealTimeMetrics JSON
+deactivate IngestionSvc
+RTService --> Controller : RealTimeMetrics DTO
+deactivate RTService
+
+Controller --> HTTPService : 200 OK with real-time metrics
+deactivate Controller
+HTTPService --> Kong : Response with live data
+deactivate HTTPService
+Kong --> Client : Real-time metrics response
+deactivate Kong
+
+== Historical PDU Data Flow (Protected) ==
+Client -> Kong : GET /api/acquisition/entity-states?startTime=123&endTime=456\nAuthorization: Bearer {jwt_token}
+activate Kong
+Kong -> Kong : Validate Firebase JWT token
+Kong -> HTTPService : Forward authenticated request
+activate HTTPService
+HTTPService -> Controller : getEntityStates(startTime, endTime)
+activate Controller
+
+Controller -> ESRepo : findByTimestampBetween(123, 456)
+activate ESRepo
+ESRepo -> DB : SELECT * FROM entity_state_record WHERE timestamp BETWEEN 123 AND 456
+activate DB
+DB --> ESRepo : Returns filtered EntityStateRecord list
+deactivate DB
+ESRepo --> Controller : List<EntityStateRecord>
+deactivate ESRepo
+
+Controller --> HTTPService : 200 OK with entity state records
+deactivate Controller
+HTTPService --> Kong : Response with historical data
+deactivate HTTPService
+Kong --> Client : Historical PDU data response
+deactivate Kong
+
+== Error Handling: Service Unavailable ==
+Client -> Kong : GET /api/acquisition/realtime\nAuthorization: Bearer {jwt_token}
+activate Kong
+Kong -> HTTPService : Forward authenticated request
+activate HTTPService
+HTTPService -> Controller : getRealTimeDisMetrics()
+activate Controller
+
+Controller -> RTService : getLatestMetrics()
+activate RTService
+RTService -> IngestionSvc : GET /internal/metrics/realtime
+activate IngestionSvc
+IngestionSvc --> RTService : Connection timeout/error
+deactivate IngestionSvc
+RTService -> RTService : handleServiceUnavailable()
+RTService --> Controller : Default RealTimeMetrics (fallback)
+deactivate RTService
+
+Controller --> HTTPService : 200 OK with fallback metrics
+deactivate Controller
+HTTPService --> Kong : Response with fallback data
+deactivate HTTPService
+Kong --> Client : Graceful degradation response
+deactivate Kong
 
 @enduml

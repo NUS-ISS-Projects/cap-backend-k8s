@@ -1,0 +1,71 @@
+@startuml ThreatModeling
+!theme aws-orange
+title CAP Platform - Key Threat Model (STRIDE)
+
+' Define risk colors
+!define CRITICAL_COLOR #FF4444
+!define HIGH_COLOR #FF8800
+!define MEDIUM_COLOR #FFAA00
+
+' Threat Actors
+actor "External Attacker" as ExtAttacker #FF6B6B
+actor "Malicious Insider" as Insider #FF8E53
+
+' CAP Platform Core Components
+package "CAP Platform" {
+  component "Kong API Gateway" as Kong #4A90E2
+  component "Microservices" as Services #7ED321
+  component "Kubernetes Cluster" as K8s #BD10E0
+  database "Critical Data\n(Simulation, Secrets)" as Data CRITICAL_COLOR
+}
+
+' Critical Threats Only
+package "Critical & High Risk Threats" {
+  
+  ' Critical Threats
+  usecase "THREAT-EXT-003\nData Exfiltration\n[CRITICAL]" as T_EXT_003 CRITICAL_COLOR
+  usecase "THREAT-INT-003\nSecrets Compromise\n[CRITICAL]" as T_INT_003 CRITICAL_COLOR
+  usecase "THREAT-INF-001\nK8s Cluster Compromise\n[CRITICAL]" as T_INF_001 CRITICAL_COLOR
+  
+  ' High Priority Threats
+  usecase "THREAT-EXT-001\nAPI Gateway Compromise\n[HIGH]" as T_EXT_001 HIGH_COLOR
+  usecase "THREAT-APP-001\nInjection Attacks\n[HIGH]" as T_APP_001 HIGH_COLOR
+  usecase "THREAT-APP-003\nDependency Vulnerabilities\n[HIGH]" as T_APP_003 HIGH_COLOR
+}
+
+' Attack Vectors (Key Paths Only)
+ExtAttacker --> T_EXT_001 : "DDoS, JWT manipulation"
+ExtAttacker --> T_EXT_003 : "SQL injection, API abuse"
+ExtAttacker --> T_APP_001 : "Code injection"
+ExtAttacker --> T_APP_003 : "CVE exploitation"
+ExtAttacker --> T_INT_003 : "CI/CD compromise"
+ExtAttacker --> T_INF_001 : "RBAC escalation"
+Insider --> T_INT_003 : "Privilege abuse"
+
+' Threat Targets
+T_EXT_001 --> Kong : "Targets"
+T_EXT_003 --> Data : "Targets"
+T_APP_001 --> Services : "Targets"
+T_APP_003 --> Services : "Targets"
+T_INT_003 --> Data : "Targets"
+T_INF_001 --> K8s : "Targets"
+
+' STRIDE Categories
+note top of T_EXT_001 : **STRIDE:** Spoofing, DoS
+note top of T_EXT_003 : **STRIDE:** Information Disclosure
+note top of T_APP_001 : **STRIDE:** Tampering, Elevation
+note top of T_APP_003 : **STRIDE:** All Categories
+note top of T_INT_003 : **STRIDE:** Information Disclosure
+note top of T_INF_001 : **STRIDE:** All Categories
+
+' Current Mitigations
+package "Key Mitigations" {
+  rectangle "**Implemented:**\n• Kong Gateway + Firebase JWT\n• HTTPS/TLS encryption\n• Container image scanning\n• OWASP ZAP DAST" as CurrentMit #E8F5E8
+  
+  rectangle "**Priority Enhancements:**\n• Web Application Firewall\n• Multi-factor authentication\n• Runtime security monitoring\n• External secret management" as Enhancements #FFE4E1
+}
+
+' Risk Legend
+note bottom : **Risk Levels:** CRITICAL (Red) | HIGH (Orange) | MEDIUM (Yellow)\n**STRIDE:** Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege
+
+@enduml

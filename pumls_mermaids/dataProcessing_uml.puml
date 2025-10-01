@@ -5,57 +5,113 @@ skinparam shadowing true
 skinparam roundcorner 20
 skinparam defaultFontName "Inter"
 
-interface PduParser {
-  + parseAndStore(String): void
+package "com.cap.dis.controller" {
+    class HealthController {
+        + healthCheck(): ResponseEntity<String>
+    }
 }
 
-class PduParserFactory {
-  - parsers: Map<String, PduParser>
-  + getParser(String): PduParser
-}
+package "com.cap.dis.service" {
+    interface PduParser {
+        + parseAndStore(String): void
+    }
 
-class PduProcessingService {
-  - objectMapper: ObjectMapper
-  - parserFactory: PduParserFactory
-  + consume(String): void
-}
+    class PduParserFactory {
+        - parsers: Map<String, PduParser>
+        + init(): void
+        + getParser(String): PduParser
+    }
 
-class EntityStatePduParser {
-  - repository: EntityStateRepository
-  + parseAndStore(String): void
-}
+    class PduProcessingService {
+        - objectMapper: ObjectMapper
+        - parserFactory: PduParserFactory
+        + consume(String): void
+    }
 
-class FirePduParser {
-  - repository: FireEventRepository
-  + parseAndStore(String): void
-}
+    ' Key PDU Parsers (showing main types)
+    class EntityStatePduParser {
+        - repository: EntityStateRepository
+        - objectMapper: ObjectMapper
+        + parseAndStore(String): void
+    }
 
-class DefaultPduParser {
-  + parseAndStore(String): void
+    class FirePduParser {
+        - repository: FireEventRepository
+        - objectMapper: ObjectMapper
+        + parseAndStore(String): void
+    }
+
+    class "Other PDU Parsers" as OtherParsers {
+        CollisionPduParser
+        DetonationPduParser
+        DataPduParser
+        ActionRequestPduParser
+        StartResumePduParser
+        SetDataPduParser
+        DesignatorPduParser
+        ElectromagneticEmissionsPduParser
+    }
+
+    class DefaultPduParser {
+        + parseAndStore(String): void
+    }
 }
 
 package "com.cap.dis.repository" {
     interface EntityStateRepository <<JPA>>
     interface FireEventRepository <<JPA>>
+    interface "Other Repositories" as OtherRepos <<JPA>>
 }
 
 package "com.cap.dis.model" {
     class EntityStateRecord <<Entity>>
     class FireEventRecord <<Entity>>
+    class "Other PDU Records" as OtherRecords <<Entity>>
 }
 
+package "External Services" {
+    class "Kong Gateway" as Kong {
+        + validateJWT(String): boolean
+        + routeRequest(String): void
+    }
+    class "Kafka Broker" as KafkaBroker {
+        + deliver(String, String): void
+        + manageOffset(): void
+    }
+    class "PostgreSQL Database" as PostgreSQL {
+        + persist(Object): void
+        + transaction(): void
+    }
+}
 
-PduProcessingService o--> PduParserFactory
+' Core relationships
+PduProcessingService o--> PduParserFactory : uses
 PduParserFactory --> PduParser : creates
 
+' Parser implementations
 PduParser <|.. EntityStatePduParser
 PduParser <|.. FirePduParser
+PduParser <|.. OtherParsers : 8+ parsers
 PduParser <|.. DefaultPduParser
 
-EntityStatePduParser ..> EntityStateRepository
-FirePduParser ..> FireEventRepository
+' Repository relationships
+EntityStatePduParser ..> EntityStateRepository : uses
+FirePduParser ..> FireEventRepository : uses
+OtherParsers ..> OtherRepos : uses
 
+' Entity creation relationships
 EntityStatePduParser ..> EntityStateRecord : creates
 FirePduParser ..> FireEventRecord : creates
+OtherParsers ..> OtherRecords : creates
+
+' External integrations
+Kong ..> HealthController : routes /api/processing/health
+Kong ..> PduProcessingService : routes /api/processing/* (protected)
+KafkaBroker ..> PduProcessingService : delivers messages (concurrency=3)
+EntityStateRepository ..> PostgreSQL : persists to
+FireEventRepository ..> PostgreSQL : persists to
+OtherRepos ..> PostgreSQL : persists to
+
+note top of OtherParsers : Includes 8 additional parsers:\nCollision, Detonation, Data, ActionRequest,\nStartResume, SetData, Designator,\nElectromagneticEmissions
 
 @enduml

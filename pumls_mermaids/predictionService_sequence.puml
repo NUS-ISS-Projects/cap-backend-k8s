@@ -1,0 +1,199 @@
+@startuml
+autonumber
+actor "Client / UI" as Client
+
+participant "Kong Gateway" as Kong
+participant "HTTP ClusterIP Service" as HTTPService
+participant "Flask App (predict_v5.py)" as FlaskApp
+participant "DISDataRAGSystem" as RAGSystem
+participant "SentenceTransformer" as Embedder
+participant "T5 Generator" as Generator
+participant "FAISS Vector Store" as VectorStore
+participant "LinearRegression" as MLModel
+participant "Data Acquisition Service" as DataAcq
+participant "Data Ingestion Service" as DataIng
+
+== Health Check Flow (Public) ==
+Client -> Kong : GET /api/prediction/health
+activate Kong
+Kong -> HTTPService : Route to ClusterIP port 5001
+activate HTTPService
+HTTPService -> FlaskApp : health()
+activate FlaskApp
+FlaskApp --> HTTPService : {"status": "healthy", "service": "cap-pdu-prediction"}
+deactivate FlaskApp
+HTTPService --> Kong : HTTP 200 OK
+deactivate HTTPService
+Kong --> Client : Health status response
+deactivate Kong
+
+== RAG Chat Query Flow (Protected) ==
+Client -> Kong : POST /api/prediction/chat\nAuthorization: Bearer {jwt_token}\n{"query": "Total PDU for today"}
+activate Kong
+Kong -> Kong : Validate Firebase JWT token
+activate Kong
+note right: Custom jwt-firebase plugin\nvalidates token with Firebase
+Kong --> Kong : Extract user claims
+deactivate Kong
+
+Kong -> HTTPService : Forward authenticated request\nwith user headers
+activate HTTPService
+HTTPService -> FlaskApp : chat()
+activate FlaskApp
+
+FlaskApp -> FlaskApp : Extract JWT token from headers
+FlaskApp -> RAGSystem : set_jwt_token(jwt_token)
+activate RAGSystem
+RAGSystem --> FlaskApp : Token updated
+deactivate RAGSystem
+
+FlaskApp -> RAGSystem : query("Total PDU for today")
+activate RAGSystem
+
+RAGSystem -> DataAcq : GET /api/acquisition/realtime\nAuthorization: Bearer {jwt_token}
+activate DataAcq
+DataAcq --> RAGSystem : Real-time metrics JSON
+deactivate DataAcq
+
+RAGSystem -> DataAcq : GET /api/acquisition/aggregate?today=true\nAuthorization: Bearer {jwt_token}
+activate DataAcq
+DataAcq --> RAGSystem : Aggregated data JSON
+deactivate DataAcq
+
+RAGSystem -> RAGSystem : _refresh_data_cache()
+activate RAGSystem
+note right: Cache data for 2 seconds\nfor performance optimization
+RAGSystem --> RAGSystem : Data cached
+deactivate RAGSystem
+
+RAGSystem -> Embedder : encode("Total PDU for today")
+activate Embedder
+Embedder --> RAGSystem : Query embedding vector
+deactivate Embedder
+
+RAGSystem -> VectorStore : search(query_embedding, k=5)
+activate VectorStore
+VectorStore --> RAGSystem : Top 5 similar contexts
+deactivate VectorStore
+
+RAGSystem -> RAGSystem : _retrieve_context(query)
+activate RAGSystem
+note right: Extract relevant context\nfrom cached data and vector search
+RAGSystem --> RAGSystem : Contextual information
+deactivate RAGSystem
+
+RAGSystem -> Generator : generate(context + query)
+activate Generator
+Generator --> RAGSystem : Generated response text
+deactivate Generator
+
+RAGSystem --> FlaskApp : {"answer": "response", "context": "...", "data_sources": [...]}
+deactivate RAGSystem
+
+FlaskApp --> HTTPService : 200 OK with RAG response JSON
+deactivate FlaskApp
+HTTPService --> Kong : Response with intelligent answer
+deactivate HTTPService
+Kong --> Client : RAG-powered response
+deactivate Kong
+
+== ML Prediction Flow (Protected) ==
+Client -> Kong : POST /api/prediction\nAuthorization: Bearer {jwt_token}\n{"timeUnit": "hour", "buckets": [...]}
+activate Kong
+Kong -> Kong : Validate Firebase JWT token
+Kong -> HTTPService : Forward authenticated request
+activate HTTPService
+HTTPService -> FlaskApp : predict()
+activate FlaskApp
+
+FlaskApp -> FlaskApp : predict_pdu_data(request_data)
+activate FlaskApp
+
+FlaskApp -> FlaskApp : Extract and validate buckets data
+activate FlaskApp
+note right: Process 10+ PDU types:\nEntityState, Fire, Collision, Detonation,\nData, ActionRequest, StartResume,\nSetData, Designator, ElectromagneticEmissions
+FlaskApp --> FlaskApp : Historical data arrays
+deactivate FlaskApp
+
+FlaskApp -> MLModel : fit(X_historical, y_historical)
+activate MLModel
+MLModel --> FlaskApp : Model trained
+deactivate MLModel
+
+FlaskApp -> MLModel : predict(future_x_indices)
+activate MLModel
+MLModel --> FlaskApp : Predicted values array
+deactivate MLModel
+
+FlaskApp -> FlaskApp : Format prediction results
+FlaskApp --> FlaskApp : {"predicted_labels": [...], "predicted_values": [...]}
+deactivate FlaskApp
+
+FlaskApp --> HTTPService : 200 OK with prediction JSON
+deactivate FlaskApp
+HTTPService --> Kong : Response with ML predictions
+deactivate HTTPService
+Kong --> Client : ML prediction response
+deactivate Kong
+
+== Chat Status Flow (Public) ==
+Client -> Kong : GET /api/prediction/chat/status
+activate Kong
+Kong -> HTTPService : Route to ClusterIP port 5001
+activate HTTPService
+HTTPService -> FlaskApp : chat_status()
+activate FlaskApp
+
+FlaskApp -> RAGSystem : get_system_status()
+activate RAGSystem
+RAGSystem -> RAGSystem : Check model readiness
+RAGSystem -> RAGSystem : Check data cache status
+RAGSystem -> RAGSystem : Check service connectivity
+RAGSystem --> FlaskApp : System status dict
+deactivate RAGSystem
+
+FlaskApp --> HTTPService : 200 OK with system status
+deactivate FlaskApp
+HTTPService --> Kong : Response with status info
+deactivate HTTPService
+Kong --> Client : System status response
+deactivate Kong
+
+== Error Handling: Service Unavailable ==
+Client -> Kong : POST /api/prediction/chat\nAuthorization: Bearer {jwt_token}
+activate Kong
+Kong -> HTTPService : Forward authenticated request
+activate HTTPService
+HTTPService -> FlaskApp : chat()
+activate FlaskApp
+
+FlaskApp -> RAGSystem : query("System status")
+activate RAGSystem
+
+RAGSystem -> DataAcq : GET /api/acquisition/realtime
+activate DataAcq
+DataAcq --> RAGSystem : Connection timeout/error
+deactivate DataAcq
+
+RAGSystem -> RAGSystem : Handle service unavailable
+activate RAGSystem
+note right: Graceful degradation:\nUse cached data or\ngenerate fallback response
+RAGSystem --> RAGSystem : Fallback context
+deactivate RAGSystem
+
+RAGSystem -> Generator : generate(fallback_context + query)
+activate Generator
+Generator --> RAGSystem : Generated fallback response
+deactivate Generator
+
+RAGSystem --> FlaskApp : {"answer": "fallback response", "context": "cached", ...}
+deactivate RAGSystem
+
+FlaskApp --> HTTPService : 200 OK with fallback response
+deactivate FlaskApp
+HTTPService --> Kong : Response with graceful degradation
+deactivate HTTPService
+Kong --> Client : Intelligent fallback response
+deactivate Kong
+
+@enduml

@@ -4,40 +4,169 @@ hide circle
 
 ' avoid problems with angled crows feet
 skinparam linetype ortho
+skinparam defaultFontName "Inter"
+skinparam defaultFontSize 10
 
-entity "entity_state_record" as ESR {
-  * **id**: Long <<generated>>
-  --
-  * **site**: int
-  * **application**: int
-  * **entity**: int
-  --
-  + locationX: double
-  + locationY: double
-  + locationZ: double
-  * timestamp: long
+' User Management Tables
+package "User Management" {
+  entity "users" as USERS {
+    * **userId**: VARCHAR(36) <<UUID>>
+    --
+    * username: VARCHAR(255)
+    * email: VARCHAR(255)
+  }
+
+  entity "user_sessions" as USER_SESSIONS {
+    * **userId**: VARCHAR(36) <<FK>>
+    --
+    * userName: VARCHAR(255)
+    * name: VARCHAR(255)
+    --
+    + date: VARCHAR(255) <<embedded>>
+    + view: VARCHAR(255) <<embedded>>
+  }
 }
 
-entity "fire_event_record" as FER {
-  * **id**: Long <<generated>>
-  --
-  * firing_site: int
-  * firing_application: int
-  * firing_entity: int
-  --
-  * target_site: int
-  * target_application: int
-  * target_entity: int
-  --
-  * munition_site: int
-  * munition_application: int
-  * munition_entity: int
-  * timestamp: long
+' DIS Simulation Data Tables
+package "DIS Simulation Data" {
+  entity "entity_state_record" as ESR {
+    * **id**: Long <<generated>>
+    --
+    * **site**: int
+    * **application**: int
+    * **entity**: int
+    --
+    + locationX: double
+    + locationY: double
+    + locationZ: double
+    * timestamp: long
+  }
+
+  entity "fire_event_record" as FER {
+    * **id**: Long <<generated>>
+    --
+    * firing_site: int
+    * firing_application: int
+    * firing_entity: int
+    --
+    * target_site: int
+    * target_application: int
+    * target_entity: int
+    --
+    * munition_site: int
+    * munition_application: int
+    * munition_entity: int
+    * timestamp: long
+  }
+
+  entity "data_pdu_record" as DPR {
+    * **id**: Long <<generated>>
+    --
+    * originating_site: int
+    * originating_application: int
+    * originating_entity: int
+    --
+    * receiving_site: int
+    * receiving_application: int
+    * receiving_entity: int
+    * timestamp: long
+  }
+
+  entity "collision_record" as CR {
+    * **id**: Long <<generated>>
+    --
+    * issuing_site: int
+    * issuing_application: int
+    * issuing_entity: int
+    --
+    * colliding_site: int
+    * colliding_application: int
+    * colliding_entity: int
+    * timestamp: long
+  }
+
+  entity "detonation_record" as DR {
+    * **id**: Long <<generated>>
+    --
+    * firing_site: int
+    * firing_application: int
+    * firing_entity: int
+    --
+    * target_site: int
+    * target_application: int
+    * target_entity: int
+    --
+    + locationX: double
+    + locationY: double
+    + locationZ: double
+    * timestamp: long
+  }
+
+  entity "designator_pdu_record" as DESR {
+    * **id**: Long <<generated>>
+    --
+    * designating_site: int
+    * designating_application: int
+    * designating_entity: int
+    --
+    * designated_site: int
+    * designated_application: int
+    * designated_entity: int
+    * timestamp: long
+  }
+
+  entity "set_data_pdu_record" as SDPR {
+    * **id**: Long <<generated>>
+    --
+    * originating_site: int
+    * originating_application: int
+    * originating_entity: int
+    * timestamp: long
+  }
+
+  entity "start_resume_pdu_record" as SRPR {
+    * **id**: Long <<generated>>
+    --
+    * hour: int
+    * time_past_hour: int
+    * timestamp: long
+  }
+
+  entity "electromagnetic_emissions_pdu_record" as EEPR {
+    * **id**: Long <<generated>>
+    --
+    * emitting_site: int
+    * emitting_application: int
+    * emitting_entity: int
+    * timestamp: long
+  }
+
+  entity "action_request_pdu_record" as ARPR {
+    * **id**: Long <<generated>>
+    --
+    * originating_site: int
+    * originating_application: int
+    * originating_entity: int
+    --
+    * receiving_site: int
+    * receiving_application: int
+    * receiving_entity: int
+    * timestamp: long
+  }
 }
 
-' Logical relationship where the combination of (site, application, entity) in ESR
-' can be linked to (firing_site, firing_application, firing_entity) in FER
-' or (target_site, target_application, target_entity) in FER.
-ESR ||..o{ FER : "logically related to"
+' Relationships
+USERS ||--o{ USER_SESSIONS : "userId"
+
+' Logical relationships between DIS entities
+' Entity State Records can be referenced by other PDU types through (site, application, entity) combinations
+ESR ||..o{ FER : "entity references"
+ESR ||..o{ DPR : "entity references"
+ESR ||..o{ CR : "entity references"
+ESR ||..o{ DR : "entity references"
+ESR ||..o{ DESR : "entity references"
+ESR ||..o{ SDPR : "entity references"
+ESR ||..o{ EEPR : "entity references"
+ESR ||..o{ ARPR : "entity references"
 
 @enduml

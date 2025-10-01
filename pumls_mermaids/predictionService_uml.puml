@@ -1,0 +1,193 @@
+@startuml
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam shadowing true
+skinparam roundcorner 20
+skinparam defaultFontName "Inter"
+
+package "Flask Application" {
+    class PredictionApp {
+        - app: Flask
+        - rag_system: DISDataRAGSystem
+        + health(): ResponseEntity
+        + chat(): ResponseEntity
+        + chat_status(): ResponseEntity
+        + predict(): ResponseEntity
+        + get_rag_system(): DISDataRAGSystem
+        + predict_pdu_data(dict): dict
+    }
+}
+
+package "RAG System" {
+    class DISDataRAGSystem {
+        - base_url: str
+        - jwt_token: str
+        - device: str
+        - endpoints: dict
+        - data_cache: dict
+        - cache_timestamp: datetime
+        - cache_duration: int
+        - vector_store: FAISS
+        - source_chunks: List
+        - retriever_model: SentenceTransformer
+        - generator_model: T5ForConditionalGeneration
+        - generator_tokenizer: T5Tokenizer
+        + __init__(base_url, jwt_token)
+        + set_jwt_token(str): void
+        + query(str): dict
+        + get_system_status(): dict
+        - _load_models(): void
+        - _fetch_real_time_metrics(): dict
+        - _refresh_data_cache(): void
+        - _generate_embeddings(List): ndarray
+        - _retrieve_context(str): List
+        - _generate_response(str, str): str
+    }
+}
+
+package "ML Models" {
+    class SentenceTransformer <<Model>> {
+        - model_name: "all-MiniLM-L6-v2"
+        - device: str
+        + encode(List): ndarray
+        + similarity(ndarray, ndarray): float
+    }
+    
+    class T5ForConditionalGeneration <<Model>> {
+        - model_name: "google/flan-t5-small"
+        - device: str
+        + generate(input_ids): tensor
+        + forward(input_ids): tensor
+    }
+    
+    class T5Tokenizer <<Tokenizer>> {
+        - model_name: "google/flan-t5-small"
+        + encode(str): List
+        + decode(List): str
+        + tokenize(str): List
+    }
+    
+    class LinearRegression <<Model>> {
+        + fit(X, y): void
+        + predict(X): ndarray
+        + score(X, y): float
+    }
+    
+    class FAISSVectorStore <<VectorDB>> {
+        - index: faiss.Index
+        - dimension: int
+        + add(ndarray): void
+        + search(ndarray, k): Tuple
+        + save(str): void
+        + load(str): void
+    }
+}
+
+package "Data Models" {
+    class PredictionRequest <<DTO>> {
+        - timeUnit: str
+        - buckets: List[dict]
+    }
+    
+    class PredictionResponse <<DTO>> {
+        - predicted_labels: List[str]
+        - predicted_values: List[float]
+    }
+    
+    class ChatRequest <<DTO>> {
+        - query: str
+    }
+    
+    class ChatResponse <<DTO>> {
+        - query: str
+        - answer: str
+        - context: str
+        - data_sources: List[str]
+        - timestamp: str
+    }
+    
+    class HealthResponse <<DTO>> {
+        - status: str
+        - service: str
+    }
+    
+    class SystemStatus <<DTO>> {
+        - rag_system_ready: bool
+        - models_loaded: bool
+        - data_cache_status: str
+        - last_update: str
+    }
+}
+
+package "External Services" {
+    class "Kong Gateway" as Kong {
+        + validateJWT(str): bool
+        + routeRequest(str): void
+        + applyRateLimit(): void
+        + applyCORS(): void
+        + forwardUserContext(): void
+    }
+    
+    class "Data Acquisition Service" as DataAcq {
+        + getRealTimeMetrics(): dict
+        + getAggregatedMetrics(): dict
+        + getHistoricalData(): dict
+    }
+    
+    class "Data Ingestion Service" as DataIng {
+        + getInternalMetrics(): dict
+        + getHealthStatus(): dict
+    }
+    
+    class "Data Processing Service" as DataProc {
+        + getHealthStatus(): dict
+        + getProcessingMetrics(): dict
+    }
+}
+
+package "Network Services" {
+    class "HTTP ClusterIP Service" as HTTPService {
+        - port: 5001
+        - targetPort: 5001
+        + routeHTTPTraffic(): void
+    }
+}
+
+' Core relationships
+PredictionApp o--> DISDataRAGSystem : uses
+PredictionApp ..> PredictionRequest : receives
+PredictionApp ..> PredictionResponse : creates
+PredictionApp ..> ChatRequest : receives
+PredictionApp ..> ChatResponse : creates
+PredictionApp ..> HealthResponse : creates
+
+' RAG System relationships
+DISDataRAGSystem o--> SentenceTransformer : uses for embeddings
+DISDataRAGSystem o--> T5ForConditionalGeneration : uses for generation
+DISDataRAGSystem o--> T5Tokenizer : uses for tokenization
+DISDataRAGSystem o--> FAISSVectorStore : uses for vector search
+DISDataRAGSystem ..> SystemStatus : creates
+
+' ML Model relationships
+PredictionApp o--> LinearRegression : uses for predictions
+T5ForConditionalGeneration ..> T5Tokenizer : uses
+
+' External service integrations
+DISDataRAGSystem ..> DataAcq : HTTP GET /api/acquisition/*
+DISDataRAGSystem ..> DataIng : HTTP GET /api/ingestion/*
+DISDataRAGSystem ..> DataProc : HTTP GET /api/processing/*
+
+' Kong Gateway routing
+Kong ..> PredictionApp : routes /api/prediction/health (public)
+Kong ..> PredictionApp : routes /api/prediction/chat/status (public)
+Kong ..> PredictionApp : routes /api/prediction/chat (protected)
+Kong ..> PredictionApp : routes /api/prediction/* (protected)
+
+' Network service routing
+HTTPService ..> PredictionApp : routes HTTP requests
+
+note top of DISDataRAGSystem : RAG System Features:\n- Vector embeddings for semantic search\n- Context retrieval and ranking\n- Natural language generation\n- Multi-turn conversation support\n- Real-time data integration
+
+note top of LinearRegression : Prediction Features:\n- Time-series forecasting\n- 10+ PDU type aggregation\n- Dynamic model training\n- Historical pattern analysis
+
+@enduml

@@ -5,33 +5,101 @@ skinparam rectangle {
 }
 skinparam shadowing true
 skinparam defaultFontName "Inter"
+skinparam defaultFontSize 11
 
 package "GKE Cluster" {
-    node "Data Acquisition Pod" as DAQ {
-        component "Java / Spring Boot"
+    package "Core Application Services" {
+        node "Data Acquisition Pod" as DAQ {
+            component "Java / Spring Boot\nPort: 8080\nHistorical Data & Metrics"
+        }
+        node "Data Processing Pod" as DP {
+            component "Java / Spring Boot\nPort: 8080\nKafka Consumer & ETL"
+        }
+        node "Data Ingestion Pod" as DI {
+            component "Java / Spring Boot\nHTTP: 8080, UDP: 3000\nPDU Reception & Kafka Producer"
+        }
+        node "CAP User Service Pod" as USER {
+            component "Java / Spring Boot\nPort: 8080\nFirebase JWT Auth & User Mgmt"
+        }
+        node "CAP PDU Prediction Pod" as PREDICT {
+            component "Python / Flask\nPort: 5001\nML/AI & RAG System"
+        }
     }
-    node "Data Processing Pod" as DP {
-        component "Java / Spring Boot"
+
+    package "API Gateway & Security" {
+        node "Kong Gateway Pod" as KONG {
+            component "Kong API Gateway\nHTTP: 8000, Admin: 8001\nFirebase JWT Plugin & Routing"
+        }
     }
-    node "Data Ingestion Pod" as DI {
-        component "Java / Spring Boot"
+
+    package "Infrastructure Services" {
+        node "Kafka Pod" as KAFKA {
+            component "Apache Kafka\nconfluentinc/cp-kafka:7.4.0\nTopic: dis-pdus"
+        }
+        node "PostgreSQL Pod" as DB {
+            database "PostgreSQL\npostgres:14\n20Gi PVC Storage"
+        }
+        node "Zookeeper Pod" as ZK {
+            component "Zookeeper\nconfluentinc/cp-zookeeper:7.4.0\nKafka Coordination"
+        }
     }
-    node "Kafka Pod" as KAFKA {
-        component "Apache Kafka"
-    }
-    node "PostgreSQL Pod" as DB {
-        database "PostgreSQL"
+
+    package "Autoscaling" {
+        component "HPA Controllers\nCPU/Memory Based\n1-2 Replicas (Most Services)\n1 Replica (ML Service)" as HPA
     }
 }
 
-cloud "DevOps Toolchain" {
-    component "GitHub Actions (CI/CD)" as GHA
-    component "Docker (Containerization)" as DOCKER
-    component "Kustomize (Config)" as KUSTOMIZE
+cloud "DevOps & Quality Toolchain" {
+    package "CI/CD Pipeline" {
+        component "GitHub Actions\nBuild, Test, Deploy\nRollout Verification" as GHA
+        component "Docker\nContainerization\nGHCR Registry" as DOCKER
+        component "Kustomize\nEnvironment Configs\nLocal/Staging/Prod" as KUSTOMIZE
+    }
+
+    package "Quality Assurance" {
+        component "JaCoCo\nCode Coverage\nReporting" as JACOCO
+        component "SonarCloud\nStatic Analysis\nQuality Metrics" as SONAR
+        component "JUnit & Testcontainers\n75 Tests Across Services\nIntegration Testing" as TESTING
+    }
+
+    package "Security & Monitoring" {
+        component "OWASP ZAP\nDAST Security\nStaging Scans" as DAST
+        component "Firebase Auth\nJWT Validation\nProject: cap-backend-user" as FIREBASE
+        component "Prometheus\nMetrics Collection\nKong Integration" as PROMETHEUS
+    }
+
+    package "ML/AI Stack" {
+        component "scikit-learn\nPredictive Analytics\nLinear Regression" as SKLEARN
+        component "transformers\nNLP & Embeddings\nRAG System" as TRANSFORMERS
+        component "Vector Search\nSimilarity Analysis\nIntelligent Querying" as VECTOR
+    }
 }
 
-GHA --> GKE : Deploys
-DOCKER -- GHA : Builds Image for
-KUSTOMIZE -- GHA : Configures
+' Deployment Relationships
+GHA --> GKE : Deploys via kubectl apply -k
+DOCKER --> GHA : Builds Images for GHCR
+KUSTOMIZE --> GHA : Environment Configurations
+
+' Quality Integration
+JACOCO --> GHA : Coverage Reports
+SONAR --> GHA : Quality Gates
+TESTING --> GHA : Test Execution
+DAST --> GHA : Security Scanning
+
+' Security Integration
+FIREBASE --> KONG : JWT Validation
+PROMETHEUS --> KONG : Metrics Collection
+
+' ML/AI Integration
+SKLEARN --> PREDICT : ML Models
+TRANSFORMERS --> PREDICT : NLP & RAG
+VECTOR --> PREDICT : Similarity Search
+
+' Infrastructure Scaling
+HPA --> DAQ : Scales
+HPA --> DP : Scales
+HPA --> DI : Scales
+HPA --> USER : Scales
+HPA --> PREDICT : Monitors (1 replica)
 
 @enduml

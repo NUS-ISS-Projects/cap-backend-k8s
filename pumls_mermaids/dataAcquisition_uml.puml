@@ -11,10 +11,15 @@ package "com.cap.dataAcquisition.controller" {
         - realTimeMetricsService: RealTimeMetricsService
         - entityStateRepository: EntityStateRepository
         - fireEventRepository: FireEventRepository
+        - otherPduRepositories: 8+ repositories
         + getAggregatedMetricsOverview(...)
         + getRealTimeDisMetrics(...)
         + getEntityStates(...)
         + getFireEvents(...)
+        + getOtherPduData(...)
+        + getMonthlyAggregation(...)
+        + getRealTimeLogs(...)
+        + healthCheck(): ResponseEntity<String>
     }
 }
 
@@ -22,42 +27,119 @@ package "com.cap.dataAcquisition.service" {
     class MetricsService {
         - entityStateRepository: EntityStateRepository
         - fireEventRepository: FireEventRepository
+        - otherPduRepositories: 8+ repositories
         + getAggregatedMetrics(String): AggregatedMetricsOverview
         - calculatePeakLoad(...): PeakLoadInfo
+        - fromDisAbsoluteTimestamp(Long): Long
+        + formatInstant(Instant): String
     }
+    
     class RealTimeMetricsService {
         - restTemplate: RestTemplate
+        - dataIngestionServiceUrl: String
         + getLatestMetrics(): RealTimeMetrics
+        - handleServiceUnavailable(): RealTimeMetrics
     }
 }
 
 package "com.cap.dataAcquisition.repository" {
-    interface EntityStateRepository <<JPA>>
-    interface FireEventRepository <<JPA>>
+    interface EntityStateRepository <<JPA>> {
+        + findByTimestampBetween(Long, Long): List<EntityStateRecord>
+        + findAll(): List<EntityStateRecord>
+    }
+    interface FireEventRepository <<JPA>> {
+        + findByTimestampBetween(Long, Long): List<FireEventRecord>
+        + findAll(): List<FireEventRecord>
+    }
+    interface "Other PDU Repositories" as OtherRepos <<JPA>> {
+        CollisionRepository
+        DetonationRepository
+        DataPduRepository
+        ActionRequestPduRepository
+        StartResumePduRepository
+        SetDataPduRepository
+        DesignatorPduRepository
+        ElectromagneticEmissionsPduRepository
+    }
 }
 
 package "com.cap.dataAcquisition.model" {
-    class AggregatedMetricsOverview <<DTO>>
-    class RealTimeMetrics <<DTO>>
+    class AggregatedMetricsOverview <<DTO>> {
+        - timeWindowDescription: String
+        - dataFromUtc: Instant
+        - dataUntilUtc: Instant
+        - totalPackets: long
+        - entityStatePackets: long
+        - fireEventPackets: long
+        - otherPduPackets: 8+ types
+        - averagePacketsPerSecond: double
+        - peakLoad: PeakLoadInfo
+    }
+    
+    class RealTimeMetrics <<DTO>> {
+        - lastPduReceivedTimestampMs: long
+        - pdusInLastSixtySeconds: long
+        - averagePduRatePerSecondLastSixtySeconds: double
+    }
+    
+    class "Other DTOs" as OtherDTOs <<DTO>> {
+        PduLogResponse
+        MonthlyAggregation
+        CustomRangeAggregation
+        TimeBucketAggregation
+    }
 }
 
 package "External Services" {
-    ' Corrected "component" to "class" to resolve the error
-    class "Data Ingestion Service" as IngestionSvc
+    class "Kong Gateway" as Kong {
+        + validateJWT(String): boolean
+        + routeRequest(String): void
+        + applyRateLimit(): void
+        + applyCORS(): void
+    }
+    
+    class "Data Ingestion Service" as IngestionSvc {
+        + getRealTimeMetrics(): RealTimeMetrics
+        + getInternalMetrics(): RealTimeMetrics
+    }
+    
+    class "PostgreSQL Database" as PostgreSQL {
+        + query(String): ResultSet
+        + executeQuery(String): List<Object>
+    }
 }
 
+' Core relationships
+HistoricalDataController o--> MetricsService : uses
+HistoricalDataController o--> RealTimeMetricsService : uses
 
-HistoricalDataController o--> MetricsService
-HistoricalDataController o--> RealTimeMetricsService
-HistoricalDataController ..> EntityStateRepository
-HistoricalDataController ..> FireEventRepository
+' Repository relationships
+HistoricalDataController ..> EntityStateRepository : uses
+HistoricalDataController ..> FireEventRepository : uses
+HistoricalDataController ..> OtherRepos : uses 8+ repositories
 
-MetricsService o--> EntityStateRepository
-MetricsService o--> FireEventRepository
+MetricsService ..> EntityStateRepository : uses
+MetricsService ..> FireEventRepository : uses
+MetricsService ..> OtherRepos : uses 8+ repositories
 
-RealTimeMetricsService ..> IngestionSvc : HTTP GET
+' Service integrations
+RealTimeMetricsService ..> IngestionSvc : HTTP GET /internal/metrics/realtime
 
+' DTO creation relationships
 MetricsService ..> AggregatedMetricsOverview : creates
+MetricsService ..> OtherDTOs : creates
 RealTimeMetricsService ..> RealTimeMetrics : creates
+HistoricalDataController ..> OtherDTOs : creates
+
+' External integrations
+Kong ..> HistoricalDataController : routes /api/acquisition/health (public)
+Kong ..> HistoricalDataController : routes /api/acquisition/* (protected)
+EntityStateRepository ..> PostgreSQL : queries
+FireEventRepository ..> PostgreSQL : queries
+OtherRepos ..> PostgreSQL : queries
+
+note top of OtherRepos : Includes 8 additional repositories:\nCollision, Detonation, DataPdu, ActionRequest,\nStartResume, SetData, Designator,\nElectromagneticEmissions
+
+note top of OtherDTOs : Includes additional DTOs:\nPduLogResponse, MonthlyAggregation,\nCustomRangeAggregation, TimeBucketAggregation
 
 @enduml

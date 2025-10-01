@@ -1,0 +1,36 @@
+3.2 Physical Architecture & Design
+The physical architecture translates the logical design into a concrete, deployable solution. The entire platform is designed to run as a set of containerized applications orchestrated by Google Kubernetes Engine (GKE). This approach ensures that the system is portable, scalable, and leverages the robust infrastructure management capabilities of a leading cloud provider.
+
+## Physical Deployment Structure
+
+**GKE Cluster Architecture:**
+The physical layout consists of a GKE cluster with a node pool that runs all the system's workloads, including six core microservices, the Kafka message broker, Zookeeper coordination service, and the PostgreSQL database. The cluster is managed by the GKE Control Plane, which handles API server operations, scheduling, and controller management including Horizontal Pod Autoscaler (HPA) operations.
+
+**Containerized Microservices (Deployments):**
+- **Data Ingestion Service**: Containerized Java/Spring Boot application (ghcr.io/.../cap-backend-data-ingestion) handling UDP PDU intake on port 3000 and HTTP endpoints on port 8080
+- **Data Processing Service**: Containerized Java/Spring Boot application (ghcr.io/.../cap-backend-data-processing) consuming Kafka messages and storing processed data in PostgreSQL
+- **Data Acquisition Service**: Containerized Java/Spring Boot application (ghcr.io/.../cap-backend-data-acquisition) serving historical data and real-time metrics via REST APIs
+- **CAP User Service**: Containerized Java/Spring Boot application (ghcr.io/.../cap-user-service) managing user authentication and session management with Firebase integration
+- **CAP PDU Prediction Service**: Containerized Python/Flask application (ghcr.io/.../cap-pdu-prediction) providing ML-powered analytics and RAG capabilities on port 5001
+- **Kong Gateway**: Advanced API Gateway container providing centralized routing, Firebase JWT authentication, and security policy enforcement
+
+**Stateful Infrastructure (StatefulSets):**
+- **PostgreSQL Database**: postgres:14 container with persistent storage (20Gi PVC) for DIS records, user data, and application state
+- **Apache Kafka**: confluentinc/cp-kafka container providing distributed message streaming with persistent storage
+- **Zookeeper**: confluentinc/cp-zookeeper container coordinating Kafka cluster operations
+
+**Networking Architecture:**
+Kong Gateway serves as the unified entry point for all external HTTP/HTTPS traffic, replacing traditional Kubernetes Ingress controllers. It provides advanced API management with Firebase JWT authentication, path-based routing (/api/acquisition/*, /api/ingestion/*, /api/processing/*, /api/auth/*, /api/users/*, /api/prediction/*), CORS policies, and environment-specific rate limiting. A dedicated NodePort service (data-ingestion-service-udp) exposes UDP port 3000 on port 32000 for direct DIS PDU ingestion, bypassing the API Gateway for real-time performance.
+
+**Resource Management & Scaling:**
+Each deployment includes specific CPU and memory resource requests and limits optimized for their workload characteristics. Horizontal Pod Autoscalers (HPAs) monitor CPU utilization and automatically scale services based on demand, with service-specific thresholds (70-85% CPU utilization). The CAP PDU Prediction Service uses a single-instance deployment strategy (maxReplicas: 1) to maintain ML model state consistency.
+
+**Environment Strategy:**
+The platform supports three distinct physical deployment environments through Kustomize overlays:
+- **Local Development**: Minikube with NodePort services and simplified configurations
+- **Staging**: GKE with LoadBalancer services, moderate rate limiting, and DAST security scanning
+- **Production**: GKE with enhanced security, higher rate limits, and high-availability configurations
+
+This design physically separates the control plane (managed by GKE) from the data plane (the running application pods), providing a clear, resilient, and scalable operational structure with comprehensive automation and monitoring capabilities.
+
+Figure 3.2.a: Physical Architecture Diagram

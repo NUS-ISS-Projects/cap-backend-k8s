@@ -1,0 +1,235 @@
+3.2.4.3 Data Processing Service
+
+The Data Processing Service is the central transformation engine of the platform. It is a Java/Spring Boot microservice that serves as the ETL (Extract, Transform, Load) component, consuming raw JSON PDU messages from the Kafka message broker, parsing them into structured formats using specialized parsers, and persisting them into the PostgreSQL database. The service is designed to be a scalable, resilient, and stateless consumer that can process messages in parallel with high throughput and fault tolerance.
+
+## Service Overview
+
+The Data Processing Service is a Java/Spring Boot microservice that manages:
+- High-throughput Kafka message consumption from "dis-pdus" topic
+- Comprehensive PDU parsing for 10+ different DIS PDU types
+- Structured data persistence to PostgreSQL database tables
+- Factory pattern implementation for extensible PDU type handling
+- Integration with Kong Gateway for HTTP endpoint security
+- Concurrent message processing with configurable parallelism
+
+## Architecture Integration
+
+### Kafka Integration
+- Consumer of "dis-pdus" topic with processing-group consumer group
+- Concurrent message processing with concurrency level 3
+- Automatic offset management and error handling
+- Integration with Data Ingestion Service via message streaming
+- Fault-tolerant consumption with retry mechanisms
+
+### Kong Gateway Integration
+- Public endpoints: /api/processing/health (health monitoring)
+- Protected endpoints: /api/processing/* (management operations with Firebase JWT)
+- Automatic JWT validation at Kong Gateway level for protected endpoints
+- CORS and rate limiting policies applied at gateway level
+
+### Database Integration
+- PostgreSQL persistence for 10+ structured PDU record types
+- JPA/Hibernate ORM for entity management and transactions
+- Optimized database writes with batch processing capabilities
+- ACID compliance for data integrity and consistency
+
+## Use Cases
+
+The following table outlines the primary use cases for the Data Processing Service:
+
+| Use Case ID | Name | Actor(s) | Description |
+|-------------|------|----------|-------------|
+| UC-PROC-01 | Consume PDU Message | Kafka Message Broker | Continuously listens to "dis-pdus" Kafka topic and consumes JSON messages with concurrent processing (3 threads) |
+| UC-PROC-02 | Parse PDU Message | Internal | Inspects message type field and uses PduParserFactory to select appropriate parser for 10+ PDU types |
+| UC-PROC-03 | Persist Structured Data | Internal | Maps parsed data to JPA entities and saves records to PostgreSQL database tables with transactional integrity |
+| UC-PROC-04 | Handle Unknown PDU Types | Internal | Uses DefaultPduParser for unhandled PDU types, logs warnings without halting processing pipeline |
+| UC-PROC-05 | Provide Health Status | Kubernetes, Kong Gateway | Provides health check endpoint (/api/processing/health) for Kubernetes probes and Kong Gateway routing |
+| UC-PROC-06 | Process Multiple PDU Types | Internal | Handles EntityState, Fire, Collision, Detonation, Data, ActionRequest, StartResume, SetData, Designator, and ElectromagneticEmissions PDUs |
+| UC-PROC-07 | Error Handling and Recovery | Internal | Implements comprehensive error handling for malformed messages, database failures, and processing exceptions |
+
+## API Endpoints
+
+### Public Endpoints (No Authentication Required)
+
+**Health Check**
+- GET /api/processing/health
+- Response: Service health status for Kubernetes probes and monitoring
+
+### Protected Endpoints (Firebase JWT Required via Kong Gateway)
+
+**Management Operations**
+- Various /api/processing/* endpoints for service management and configuration
+- Headers: Authorization: Bearer {firebase_jwt_token} (validated by Kong Gateway)
+- Access: Administrative operations and service configuration
+
+## Technical Implementation
+
+### Factory Pattern Architecture
+- PduParserFactory.java: Central factory for PDU parser selection
+- Strategy Pattern: 10+ specialized parsers implementing PduParser interface
+- Extensible design: Easy addition of new PDU types without code modification
+- Type-specific optimization: Each parser optimized for specific PDU structure
+
+### Comprehensive PDU Parser Support
+**Core PDU Parsers:**
+- EntityStatePduParser.java: Entity state and position updates
+- FirePduParser.java: Fire event and weapon discharge data
+- CollisionPduParser.java: Collision detection and response
+- DetonationPduParser.java: Explosion and detonation events
+
+**Advanced PDU Parsers:**
+- DataPduParser.java: General data transmission PDUs
+- ActionRequestPduParser.java: Action request and command PDUs
+- StartResumePduParser.java: Simulation start/resume control
+- SetDataPduParser.java: Data setting and configuration PDUs
+- DesignatorPduParser.java: Target designation and marking
+- ElectromagneticEmissionsPduParser.java: Electronic warfare and emissions
+
+**Default Handler:**
+- DefaultPduParser.java: Handles unknown or unsupported PDU types
+
+### Kafka Consumer Configuration
+- PduProcessingService.java: Main consumer service with @KafkaListener
+- Concurrency Level: 3 parallel consumer threads for high throughput
+- Consumer Group: "processing-group" for load balancing
+- Auto-offset management with earliest offset reset
+- Error handling for malformed messages and processing failures
+
+### Database Persistence
+- Spring Data JPA repositories for each PDU record type
+- Transactional processing with @Transactional annotations
+- Optimized entity mapping and relationship management
+- Batch processing capabilities for high-volume data
+
+## Testing and Quality Assurance
+
+### Comprehensive Test Coverage
+The Data Processing Service includes 6 comprehensive test files covering all major components:
+
+**Application Tests (1 file):**
+- DisApplicationTests.java: Full application context testing
+
+**Service Tests (5 files):**
+- PduProcessingServiceTest.java: Core Kafka consumption and processing logic testing
+- PduParserFactoryTest.java: Factory pattern and parser selection testing
+- EntityStatePduParserTest.java: Entity state PDU parsing and persistence testing
+- FirePduParserTest.java: Fire event PDU parsing and persistence testing
+- DefaultPduParserTest.java: Default parser behavior and error handling testing
+- DesignatorPduParserTest.java: Designator PDU parsing and persistence testing
+
+### Quality Metrics
+- JaCoCo code coverage reporting integration
+- SonarCloud static code analysis
+- Automated test execution in CI/CD pipeline
+- Part of platform-wide 75 unit and integration tests across all services
+
+## Deployment Configuration
+
+### Container Specifications
+- Image: ghcr.io/nus-iss-projects/cap-backend-data-processing/cap-backend-data-processing:latest
+- Ports: HTTP 8080
+- Resources: CPU 100m-300m, Memory 384Mi-768Mi
+- Health Probes: /api/processing/health (60s readiness, 90s liveness initial delay)
+
+### Environment Variables
+- SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+- KAFKA_TOPIC: dis-pdus
+- SPRING_KAFKA_CONSUMER_GROUP_ID: processing-group
+- SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dis_db
+- SPRING_DATASOURCE_USERNAME: dis_user
+- SPRING_DATASOURCE_PASSWORD: dis_pass
+
+### Horizontal Pod Autoscaling
+- HPA Configuration: 1-2 replicas, 85% CPU utilization threshold
+- Automatic scaling based on Kafka message processing load
+
+## Performance Optimizations
+
+### High-Throughput Processing
+- Concurrent Kafka consumption with 3 parallel consumer threads
+- Asynchronous message processing to prevent blocking
+- Optimized JSON parsing using Jackson ObjectMapper
+- Efficient database writes with JPA batch processing
+
+### Scalability Features
+- Stateless design enabling horizontal scaling
+- Kafka consumer group load balancing across replicas
+- Factory pattern for extensible PDU type support
+- Database connection pooling for optimal resource usage
+
+### Error Handling and Resilience
+- Comprehensive error handling for malformed messages
+- Graceful degradation for unknown PDU types
+- Transaction rollback for database failures
+- Kafka offset management for message replay capabilities
+
+## Integration with Platform Services
+
+### Kong Gateway Integration
+- Centralized HTTP endpoint management with Firebase JWT authentication
+- Health endpoint exposure for monitoring and probes
+- Protected management endpoints with authentication
+- CORS and rate limiting policies for external access
+
+### Kafka Integration
+- High-throughput message consumption from "dis-pdus" topic
+- Consumer group coordination for load balancing
+- Automatic offset management and error recovery
+- Integration with Data Ingestion Service message pipeline
+
+### Database Integration
+- PostgreSQL persistence for 10+ structured PDU record types
+- JPA/Hibernate ORM for entity management
+- Transactional integrity with ACID compliance
+- Optimized queries and indexing for performance
+
+### Monitoring and Observability
+- Standardized health endpoints for Kubernetes probes
+- Comprehensive logging for message processing and errors
+- Performance metrics for throughput and latency monitoring
+- Integration with platform monitoring systems
+
+### CI/CD Integration
+- GitHub Actions pipeline with automated building and testing
+- Container image creation and publishing to GHCR
+- Kubernetes deployment with rollout verification
+- Automated rollback capabilities for failed deployments
+
+## Production Deployment
+
+### Container Specifications
+- Base Image: openjdk:17-jdk
+- Application JAR: dis-0.0.1-SNAPSHOT.jar
+- Exposed Port: 8080 (HTTP)
+- Health Check Endpoint: /api/processing/health
+
+### Environment-Specific Configurations
+**Local Development:**
+- Image: cap-backend-data-processing:latest with imagePullPolicy: Never
+- Local Kafka and PostgreSQL connections
+
+**Staging Environment:**
+- LoadBalancer service with moderate rate limiting
+- Firebase JWT authentication for protected endpoints
+- DAST security scanning integration
+
+**Production Environment:**
+- Enhanced security and high-availability configurations
+- Optimized resource allocation for high-throughput processing
+- Comprehensive monitoring and alerting
+
+### Scalability and Performance
+- HPA Configuration: 1-2 replicas based on 85% CPU utilization
+- Automatic scaling based on Kafka message processing load
+- Resource allocation: CPU 100m-300m, Memory 384Mi-768Mi
+- Health probes with 60s readiness and 90s liveness initial delay
+
+UML Class Diagram
+The class diagram below shows the key components of the Data Processing Service. The design utilizes the Factory and Strategy patterns, where the PduParserFactory selects a specific parser (strategy) based on the message type. Each parser implements the PduParser interface, providing a consistent contract for message handling.
+
+Figure 3.2.4.3.a: UML Class Diagram
+
+Sequence Diagram: PDU Processing Flow
+This sequence diagram illustrates the process of consuming a message from Kafka, parsing it, and persisting it to the database. It shows how the PduProcessingService orchestrates the workflow by delegating to the factory and the appropriate parser.
+
+Figure 3.2.4.3.b: PDU Processing Flow

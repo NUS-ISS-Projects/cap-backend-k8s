@@ -1,38 +1,130 @@
 @startuml
 autonumber
+actor "Client/UI" as Client
+actor "Data Ingestion Service" as DataIngestion
+
+participant "Kong Gateway" as Kong
+participant "HTTP ClusterIP Service" as HTTPService
+participant "HealthController" as HealthCtrl
 participant "Kafka Broker" as Kafka
 participant "PduProcessingService" as Service
 participant "PduParserFactory" as Factory
-participant "EntityStatePduParser" as Parser
-participant "EntityStateRepository" as Repo
+participant "EntityStatePduParser" as EntityParser
+participant "FirePduParser" as FireParser
+participant "DefaultPduParser" as DefaultParser
+participant "EntityStateRepository" as EntityRepo
+participant "FireEventRepository" as FireRepo
 participant "PostgreSQL DB" as DB
 
-Kafka -> Service : Delivers JSON message
+== Kafka Message Processing Flow (Concurrent) ==
+note over Kafka, Service : Concurrent processing with 3 threads\nConsumer Group: processing-group
+
+DataIngestion -> Kafka : Publishes JSON PDU to "dis-pdus" topic
+activate Kafka
+
+Kafka -> Service : Delivers EntityStatePdu JSON message (Thread 1)
 activate Service
+
+Service -> Service : Parse JSON with ObjectMapper
+activate Service
+note right: Validates message structure\nand extracts PDU type
+Service --> Service : Extract type: "EntityStatePdu"
+deactivate Service
 
 Service -> Factory : getParser("EntityStatePdu")
 activate Factory
-Factory -> Parser : <<create>>
-Factory --> Service : returns Parser instance
+Factory --> Service : Returns EntityStatePduParser
 deactivate Factory
 
-Service -> Parser : parseAndStore(jsonMessage)
-activate Parser
+Service -> EntityParser : parseAndStore(jsonMessage)
+activate EntityParser
 
-Parser -> Parser : Deserializes JSON to DTO
-Parser -> Parser : Creates EntityStateRecord
-
-Parser -> Repo : save(record)
-activate Repo
-Repo -> DB : INSERT INTO entity_state_record...
+EntityParser -> EntityParser : Deserialize JSON to DTO
+EntityParser -> EntityParser : Create EntityStateRecord
+EntityParser -> EntityRepo : save(record)
+activate EntityRepo
+EntityRepo -> DB : INSERT INTO entity_state_record...
 activate DB
-DB --> Repo :
+DB --> EntityRepo : Transaction committed
 deactivate DB
-Repo --> Parser :
-deactivate Repo
+EntityRepo --> EntityParser : Record saved
+deactivate EntityRepo
 
-Parser --> Service :
-deactivate Parser
-
+EntityParser --> Service : Processing completed
+deactivate EntityParser
 deactivate Service
+
+== Parallel Processing: Fire PDU (Thread 2) ==
+Kafka -> Service : Delivers FirePdu JSON message (Thread 2)
+activate Service
+
+Service -> Factory : getParser("FirePdu")
+activate Factory
+Factory --> Service : Returns FirePduParser
+deactivate Factory
+
+Service -> FireParser : parseAndStore(jsonMessage)
+activate FireParser
+FireParser -> FireRepo : save(fireEventRecord)
+activate FireRepo
+FireRepo -> DB : INSERT INTO fire_event_record...
+FireRepo --> FireParser : Record saved
+deactivate FireRepo
+FireParser --> Service : Processing completed
+deactivate FireParser
+deactivate Service
+
+== Error Handling: Unknown PDU Type (Thread 3) ==
+Kafka -> Service : Delivers UnknownPdu JSON message (Thread 3)
+activate Service
+
+Service -> Factory : getParser("UnknownPdu")
+activate Factory
+Factory --> Service : Returns DefaultPduParser
+deactivate Factory
+
+Service -> DefaultParser : parseAndStore(jsonMessage)
+activate DefaultParser
+note right: Logs warning for unknown type\nwithout halting pipeline
+DefaultParser -> DefaultParser : Log warning message
+DefaultParser --> Service : Graceful handling completed
+deactivate DefaultParser
+deactivate Service
+
+deactivate Kafka
+
+== Health Check Flow (Public) ==
+Client -> Kong : GET /api/processing/health
+activate Kong
+Kong -> HTTPService : Route to ClusterIP port 8080
+activate HTTPService
+HTTPService -> HealthCtrl : healthCheck()
+activate HealthCtrl
+HealthCtrl --> HTTPService : ResponseEntity("Service is up...")
+deactivate HealthCtrl
+HTTPService --> Kong : HTTP 200 OK
+deactivate HTTPService
+Kong --> Client : Health status response
+deactivate Kong
+
+== Protected Endpoint Flow (Kong Gateway Authentication) ==
+Client -> Kong : GET /api/processing/management\nAuthorization: Bearer {jwt_token}
+activate Kong
+Kong -> Kong : Validate Firebase JWT token
+activate Kong
+note right: Custom jwt-firebase plugin\nvalidates token with Firebase
+Kong --> Kong : Extract user claims
+deactivate Kong
+
+Kong -> HTTPService : Forward authenticated request\nwith user headers
+activate HTTPService
+HTTPService -> Service : Process management request
+activate Service
+Service --> HTTPService : Management response
+deactivate Service
+HTTPService --> Kong : Response with data
+deactivate HTTPService
+Kong --> Client : Authenticated response
+deactivate Kong
+
 @enduml

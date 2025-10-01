@@ -1,0 +1,262 @@
+6.4.1 General Security Architecture
+
+The CAP platform implements a security architecture focused on API Gateway-based authentication and containerized microservice protection. The security implementation is built around Kong API Gateway as the primary security enforcement point, with Firebase JWT authentication providing centralized identity management.
+
+Security Architecture Overview
+
+The CAP platform security architecture implements a gateway-centric approach where Kong API Gateway serves as the primary security enforcement point for all external traffic. The architecture provides authentication, authorization, and basic security controls across the microservice ecosystem.
+
+Implemented Security Principles
+
+1. Gateway-Centric Security: Kong API Gateway as single entry point for security enforcement
+2. Firebase JWT Authentication: Centralized identity management with JWT token validation
+3. Selective Endpoint Protection: Health and authentication endpoints remain public, data endpoints require authentication
+4. Container Security: Basic container deployment with resource limits and health checks
+
+Security Architecture Layers
+
+Layer 1: API Gateway Security (Kong Gateway)
+
+Kong API Gateway serves as the primary security enforcement point with the following implemented features:
+
+Kong API Gateway Security
+- Centralized entry point for all external HTTP/HTTPS traffic
+- Custom jwt-firebase plugin for Firebase JWT authentication
+- Selective authentication: public health/auth endpoints, protected data endpoints
+- Path-based routing to backend microservices
+- Basic CORS policy enforcement
+- Environment-specific configurations (local, staging, production)
+
+Firebase JWT Authentication Implementation
+- Custom Lua plugin (jwt-firebase) integrated into Kong Gateway
+- Dynamic Firebase public key fetching from Google's API
+- JWT signature verification using RSA-SHA256
+- Firebase-specific claim validation (iss, aud, exp)
+- User context forwarding via headers (X-User-ID, X-User-Email, X-Consumer-ID)
+- Firebase project integration: "cap-backend-user"
+
+Network Security Controls
+- HTTPS/TLS support via LoadBalancer service (ports 80/443)
+- Basic network segmentation through Kubernetes services
+- Internal service-to-service communication via cluster DNS
+
+Layer 2: Container and Kubernetes Security
+
+Basic container and Kubernetes security controls are implemented:
+
+Container Security
+- Container image deployment from GitHub Container Registry (GHCR)
+- Resource limits and requests for CPU and memory
+- Health check probes (readiness and liveness)
+- Rolling update deployment strategy
+- Image pull secrets for private registry access
+
+Kubernetes Security
+- Namespace-based service isolation (default namespace)
+- Service-to-service communication via cluster DNS
+- StatefulSet deployments for data persistence (PostgreSQL, Kafka, Zookeeper)
+- Basic secret management for Firebase service accounts and registry credentials
+
+Layer 3: CI/CD and Deployment Security
+
+The platform implements basic security controls in the deployment pipeline:
+
+CI/CD Security
+- GitHub Actions workflow for automated deployment
+- Secure credential management via GitHub Secrets:
+  - GCLOUD_AUTH: GCP service account credentials
+  - GHCR_TOKEN: GitHub Container Registry access
+  - FIREBASE_SA_B64_CI: Firebase service account (base64 encoded)
+  - STAGING_APP_URL: Application URL for security scanning
+- Dynamic Kubernetes secret creation for Firebase service accounts
+- Kustomize-based environment-specific deployments (local, staging, production)
+
+Security Scanning
+- OWASP ZAP Dynamic Application Security Testing (DAST) for staging deployments
+- Automated security scanning triggered on staging releases
+- Security scan reports generated and stored as artifacts
+- Basic vulnerability detection and reporting
+
+Deployment Security
+- Rolling update deployment strategy with rollback capabilities
+- Health check validation before deployment completion
+- Automatic rollback on deployment failures
+- Environment-specific configuration management
+
+Layer 4: Data and Service Security
+
+Basic data protection and service security controls:
+
+Database Security
+- PostgreSQL StatefulSet deployment with persistent storage
+- Basic database access via internal Kubernetes services
+- Backup automation via CronJob (postgres-backup-cronjob)
+
+Message Queue Security
+- Apache Kafka StatefulSet deployment with Zookeeper coordination
+- Internal cluster communication for message streaming
+- Topic-based data flow: "dis-pdus" for PDU message streaming
+
+Service Communication
+- Internal service-to-service communication via Kubernetes cluster DNS
+- Service discovery through Kubernetes services
+- Internal-only endpoints for service communication (e.g., /internal/metrics/realtime)
+- Basic network isolation through Kubernetes service boundaries
+- Message retention and purging policies
+
+Secrets Management
+- Kubernetes native secrets
+- Dynamic secret generation
+- Secret rotation and lifecycle management
+- Secure secret distribution
+- External secret management integration (planned)
+- Secret scanning and detection
+
+Layer 5: Monitoring and Compliance
+
+The monitoring layer provides visibility into security events and ensures compliance with security policies.
+
+Security Monitoring
+- Prometheus metrics collection
+- Grafana security dashboards
+- Real-time alerting and notifications
+- Security event correlation
+- Anomaly detection and analysis
+- Incident response automation (planned)
+
+Audit and Compliance
+- Comprehensive audit logging
+- Compliance reporting and dashboards
+- Security policy enforcement
+- Regulatory compliance tracking
+- Data retention and archival policies
+- Forensic analysis capabilities
+
+Vulnerability Management
+- Continuous vulnerability scanning
+- OWASP ZAP DAST integration
+- Container image security scanning
+- Dependency vulnerability tracking
+- Security patch management
+- Penetration testing (planned)
+
+Security Architecture Components
+
+External Security Perimeter
+
+Internet → Cloud Load Balancer → Kong API Gateway
+- DDoS protection and rate limiting
+- SSL/TLS termination and encryption
+- Firebase JWT authentication
+- API routing and transformation
+- Security policy enforcement
+
+Internal Security Zones
+
+DMZ Zone (Kong Gateway)
+- API gateway security controls
+- External traffic processing
+- Authentication and authorization
+- Rate limiting and throttling
+- Security monitoring and logging
+
+Application Zone (Microservices)
+- Spring Security framework
+- Inter-service authentication
+- Business logic security
+- Data validation and sanitization
+- Application-level monitoring
+
+Data Zone (Databases and Message Queues)
+- Database security controls
+- Message queue encryption
+- Data access controls
+- Backup and recovery security
+- Data retention policies
+
+Management Zone (Kubernetes Control Plane)
+- RBAC and access controls
+- Cluster security monitoring
+- Configuration management
+- Secret and certificate management
+- Administrative access controls
+
+Security Control Integration
+
+The security architecture integrates multiple security controls to provide comprehensive protection:
+
+Identity and Access Management (IAM)
+- Centralized identity management through Firebase
+- Role-based access control (RBAC)
+- Attribute-based access control (ABAC) capabilities
+- Single sign-on (SSO) integration
+- Privileged access management (PAM) planning
+
+Network Security
+- Network segmentation and micro-segmentation
+- Virtual private cloud (VPC) isolation
+- Network access control lists (NACLs)
+- Security groups and firewall rules
+- Network intrusion detection and prevention
+
+Application Security
+- Secure development lifecycle (SDLC)
+- Static application security testing (SAST)
+- Dynamic application security testing (DAST)
+- Interactive application security testing (IAST) planning
+- Runtime application self-protection (RASP) planning
+
+Data Protection
+- Data classification and labeling
+- Data loss prevention (DLP) planning
+- Privacy-preserving technologies
+- Data anonymization and pseudonymization
+- Secure data sharing and collaboration
+
+Security Architecture Patterns
+
+Microservices Security Pattern
+- Service-to-service authentication
+- API gateway as security enforcement point
+- Distributed security context
+- Service mesh security (planned)
+- Container-level security isolation
+
+Zero Trust Architecture Pattern
+- Never trust, always verify principle
+- Continuous authentication and authorization
+- Micro-segmentation and least privilege
+- Encrypted communications everywhere
+- Comprehensive monitoring and analytics
+
+Defense in Depth Pattern
+- Multiple independent security layers
+- Redundant security controls
+- Fail-safe security mechanisms
+- Security control diversity
+- Comprehensive threat coverage
+
+Security Architecture Governance
+
+Security Policy Framework
+- Information security policy
+- Access control policies
+- Data protection policies
+- Incident response procedures
+- Security awareness and training
+
+Risk Management
+- Security risk assessment
+- Threat modeling and analysis
+- Vulnerability management
+- Security metrics and KPIs
+- Continuous improvement processes
+
+Compliance and Audit
+- Regulatory compliance requirements
+- Security audit procedures
+- Compliance monitoring and reporting
+- Third-party security assessments
+- Certification and accreditation
+
+This general security architecture provides a comprehensive framework for protecting the CAP platform across all layers, from network edge to data storage, ensuring robust security posture while maintaining operational efficiency and scalability.

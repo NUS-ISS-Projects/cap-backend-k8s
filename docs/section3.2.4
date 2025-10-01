@@ -1,0 +1,150 @@
+3.2.4 Detailed Design
+The detailed physical design specifies the precise configuration of the Kubernetes resources that constitute the running system, including all six microservices, Kong Gateway, and supporting infrastructure.
+
+## Kubernetes Workloads
+
+### Deployments (Stateless Microservices)
+The platform consists of six core microservices managed by Kubernetes Deployments, each configured with specific resource allocations and health monitoring:
+
+Data Ingestion Service (data-ingestion-service)
+- Replicas: 1 (baseline), scales to 2 via HPA
+- Image: ghcr.io/nus-iss-projects/cap-backend-data-ingestion/cap-backend-data-ingestion:latest
+- Ports: HTTP 8080, UDP 3000
+- Resources: CPU 50m-200m, Memory 256Mi-512Mi
+- Health Probes: /api/ingestion/health (60s initial delay, 5s timeout)
+- Environment: SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092, KAFKA_TOPIC=dis-pdus, UDP_PORT=3000
+
+Data Processing Service (data-processing-service)
+- Replicas: 1 (baseline), scales to 2 via HPA
+- Image: ghcr.io/nus-iss-projects/cap-backend-data-processing/cap-backend-data-processing:latest
+- Ports: HTTP 8080
+- Resources: CPU 100m-300m, Memory 384Mi-768Mi
+- Health Probes: /api/processing/health (60s initial delay, 5s timeout)
+- Environment: SPRING_KAFKA_CONSUMER_GROUP_ID=processing-group, SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/dis_db
+
+Data Acquisition Service (data-acquisition-service)
+- Replicas: 1 (baseline), scales to 2 via HPA
+- Image: ghcr.io/nus-iss-projects/cap-backend-data-acquisition/cap-backend-data-acquisition:latest
+- Ports: HTTP 8080
+- Resources: CPU 100m-300m, Memory 384Mi-768Mi
+- Health Probes: /api/acquisition/health (60s initial delay, 5s timeout)
+- Environment: SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/dis_db, metrics.dataIngestion.service.url=http://data-ingestion-service:8080
+
+CAP User Service (cap-user-service)
+- Replicas: 1 (baseline), scales to 2 via HPA
+- Image: ghcr.io/nus-iss-projects/cap-user-service/cap-user-service:latest
+- Ports: HTTP 8080
+- Resources: CPU 100m-300m, Memory 384Mi-768Mi
+- Health Probes: /api/user/health (60s initial delay, 5s timeout)
+- Environment: Firebase integration with project "cap-backend-user", PostgreSQL connection for user data
+
+CAP PDU Prediction Service (cap-pdu-prediction-service)
+- Replicas: 1 (fixed, no scaling for ML model consistency)
+- Image: ghcr.io/nus-iss-projects/cap-pdu-prediction/cap-pdu-prediction:latest
+- Ports: HTTP 5001
+- Resources: CPU 300m-1000m, Memory 1.5Gi-2Gi, Ephemeral Storage 2Gi-3Gi
+- Health Probes: /health (180s initial delay, 15s timeout for ML model loading)
+- Environment: FLASK_ENV=production, PYTHONUNBUFFERED=1
+
+Kong Gateway (kong-gateway)
+- Replicas: 1 (local), 1-3 (staging/production)
+- Image: kong:latest with custom Firebase JWT plugin
+- Ports: HTTP 8000 (proxy), Admin 8001, Manager 8002
+- Resources: CPU 200m-500m, Memory 512Mi-1Gi
+- Configuration: Declarative YAML via ConfigMap with Firebase JWT authentication, CORS, rate limiting
+
+### StatefulSets (Stateful Infrastructure)
+Critical infrastructure components requiring persistent storage and stable network identities:
+
+PostgreSQL Database (postgres)
+- Replicas: 1 (single instance with persistent storage)
+- Image: postgres:14
+- Ports: 5432
+- Storage: 20Gi PersistentVolumeClaim with standard-rwo storage class
+- Environment: POSTGRES_DB=dis_db, POSTGRES_USER=dis_user, POSTGRES_PASSWORD=dis_pass
+- Purpose: Stores processed DIS data (EntityStateRecord, FireEventRecord, DataPduRecord), user data, and session information
+
+Apache Kafka (kafka)
+- Replicas: 1 (single broker, scalable to 3+ for production)
+- Image: confluentinc/cp-kafka:7.4.0
+- Ports: 9092
+- Topic: "dis-pdus" for PDU message streaming
+- Coordination: Requires Zookeeper for cluster management
+
+Zookeeper (zookeeper)
+- Replicas: 1 (single instance, scalable to 3+ for production)
+- Image: confluentinc/cp-zookeeper:7.4.0
+- Ports: 2181
+- Purpose: Provides coordination and configuration management for Kafka cluster
+
+## Networking Services
+
+### Kong Gateway (API Gateway)
+Replaces traditional Kubernetes Ingress with enterprise-grade API management:
+- Service Type: LoadBalancer (staging/production), NodePort (local development)
+- External Access: LoadBalancer IP (cloud), dis.local:32080 (local)
+- Routing Configuration: Path-based routing to backend services via declarative YAML
+- Authentication: Firebase JWT plugin with dynamic key fetching from project "cap-backend-user"
+- Security Policies: CORS, rate limiting (staging: 5000/min, production: 10000/min), Prometheus metrics
+
+### Service Discovery & Internal Communication
+ClusterIP Services: Default service type for internal communication between microservices
+- data-acquisition-service:8080 → Data Acquisition pods
+- data-ingestion-service:8080 → Data Ingestion pods (HTTP endpoints)
+- data-processing-service:8080 → Data Processing pods
+- cap-user-service:8080 → User Service pods
+- cap-pdu-prediction-service:5001 → Prediction Service pods
+- postgres:5432 → PostgreSQL database
+
+Headless Services: For StatefulSet coordination and service discovery
+- kafka:9092 → Kafka brokers with stable network identities
+- zookeeper:2181 → Zookeeper instances for cluster coordination
+
+NodePort Service: Direct UDP access bypassing API Gateway
+- data-ingestion-service-udp: Exposes UDP port 3000 on pods to port 32000 on GKE nodes for high-performance DIS PDU ingestion
+
+## Scalability & Resource Management
+
+### Horizontal Pod Autoscaling (HPA)
+Service-specific HPA configurations with tailored scaling thresholds:
+
+data-ingestion-hpa: CPU 70%, 1-2 replicas (handles UDP traffic spikes)
+data-processing-hpa: CPU 85%, 1-2 replicas (processes Kafka messages)
+data-acquisition-hpa: CPU 85%, 1-2 replicas (serves API queries)
+cap-user-service-hpa: CPU 85% + Memory 90%, 1-2 replicas (authentication load)
+cap-pdu-prediction-hpa: CPU 70% + Memory 85%, 1 replica only (ML model consistency)
+
+### Resource Allocation Strategy
+Fine-Grained Resource Management: Each service has optimized resource requests and limits:
+- Lightweight Services: Data Ingestion (50m-200m CPU, 256Mi-512Mi memory)
+- Standard Services: Data Processing, Acquisition, User Service (100m-300m CPU, 384Mi-768Mi memory)
+- ML Service: Prediction Service (300m-1000m CPU, 1.5Gi-2Gi memory, 2Gi-3Gi ephemeral storage)
+- Gateway Service: Kong Gateway (200m-500m CPU, 512Mi-1Gi memory)
+
+### Environment-Specific Configurations
+Kustomize Overlays: Environment-specific patches for local, staging, and production:
+- Local Development: NodePort services, simplified authentication, development-friendly rate limits
+- Staging Environment: LoadBalancer services, moderate rate limiting (5000/min), DAST security scanning
+- Production Environment: Enhanced security, higher rate limits (10000/min), high-availability configurations
+
+## Container Image Management
+GitHub Container Registry (GHCR): All images follow standardized naming convention:
+- ghcr.io/nus-iss-projects/cap-backend-{service-name}/cap-backend-{service-name}:latest
+- Image Pull Policy: Always (ensures latest images in cloud), Never (local development)
+- Security: ghcr-secret for authenticated image pulls from private registry
+
+## Health Monitoring & Observability
+Standardized Health Endpoints: All services expose health endpoints for Kubernetes probes:
+- /api/acquisition/health, /api/ingestion/health, /api/processing/health, /api/user/health
+- /health (for cap-pdu-prediction-service)
+- Probe Configuration: Readiness and liveness probes with service-specific timeouts
+- Extended Timeouts: ML service has 180s initial delay for model loading
+
+## Security & Authentication
+Firebase JWT Integration: Kong Gateway implements enterprise-grade authentication:
+- Custom Plugin: jwt-firebase plugin for token validation
+- Dynamic Key Fetching: Automatic Firebase public key rotation
+- Endpoint Security: Public endpoints (health, auth) vs protected endpoints (data APIs)
+- Project Integration: Firebase project "cap-backend-user" for centralized user management
+
+Figure 3.2.4.a: Detailed design
